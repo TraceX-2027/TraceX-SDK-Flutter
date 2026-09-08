@@ -1,0 +1,63 @@
+import 'package:dio/dio.dart';
+import 'package:get_it/get_it.dart';
+import 'package:tracex/data/collectors/breadcrumb_collector.dart';
+import 'package:tracex/data/collectors/environment_collector.dart';
+import 'package:tracex/data/datasorces/crash_remote_datasorces.dart';
+import 'package:tracex/data/repositories/breadcrumb_repository.dart';
+import 'package:tracex/data/repositories/crash_repositoriy.dart';
+import 'package:tracex/data/repositories/environment_repository.dart';
+import 'package:tracex/domain/repositories/base_breadcrumb_repository.dart';
+import 'package:tracex/domain/repositories/base_environment_repository.dart';
+import 'package:tracex/domain/repositories/base_crash_repository.dart';
+import 'package:tracex/domain/usecases/get_breadcrumb_details.dart';
+import 'package:tracex/domain/usecases/get_environment_details.dart';
+import 'package:tracex/domain/usecases/sent_crash_detiles.dart';
+
+final sl = GetIt.instance;
+
+class ServicesLocator {
+  static final _dio = Dio();
+  static final EnvironmentCollector _environmentCollector =
+      EnvironmentCollector();
+  static final BreadcrumbCollector _breadcrumbCollector = BreadcrumbCollector();
+
+  static void init() {
+    _registerCrash();
+    _registerEnvironment();
+    _registerBreadcrumt();
+  }
+
+  static void _registerCrash() {
+    sl.registerLazySingleton<BaseCrashRemoteDatasorces>(
+      () => CrashRemoteDatasorces(dio: _dio),
+    );
+
+    sl.registerLazySingleton<BaseCrashRepository>(
+      () => CrashRepositoriy(baseCrashRemoteDatasorces: sl()),
+    );
+
+    sl.registerLazySingleton<SentCrashDetiles>(
+      () => SentCrashDetiles(baseCrashRepository: sl()),
+    );
+  }
+
+  static void _registerEnvironment() {
+    sl.registerLazySingleton<BaseEnvironmentRepository>(
+      () => EnvironmentRepository(environmentCollector: _environmentCollector),
+    );
+
+    sl.registerLazySingleton<GetEnvironmentDetails>(
+      () => GetEnvironmentDetails(baseEnvironmentCollector: sl()),
+    );
+  }
+
+  static void _registerBreadcrumt() {
+    sl.registerLazySingleton<BaseBreadcrumbRepository>(
+      () => BreadcrumbRepository(breadcrumbCollector: _breadcrumbCollector),
+    );
+
+    sl.registerLazySingleton<GetBreadcrumbDetails>(
+      () => GetBreadcrumbDetails(baseBreadcrumbRepository: sl()),
+    );
+  }
+}
