@@ -14,15 +14,4 @@ class Breadcrumb {
     required this.target,
     required this.data,
   });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'sequence_order': sequenceOrder,
-      'timestamp': timestamp.toUtc().toIso8601String(),
-      'category': category,
-      'action': action,
-      'target': target,
-      'data': data,
-    };
-  }
 }

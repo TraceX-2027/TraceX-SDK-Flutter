@@ -2,76 +2,210 @@ import 'dart:io';
 
 import 'package:battery_plus/battery_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:tracex/data/collectors/ios_collector/ios_device_info_collector.dart';
 
 import 'package:tracex/domain/entities/environment.dart';
 
 class EnvironmentCollector {
+  static const MethodChannel _channel = MethodChannel('tracex/environment');
+
   final DeviceInfoPlugin _deviceInfo;
   final Battery _battery;
 
   PackageInfo? _packageInfo;
-
+  var freeRamMb = 0;
+  var totalRamMb = 0;
+  bool isLowMemory = false;
   String _osName = 'Unknown';
   String _osVersion = 'Unknown';
   String _deviceModel = 'Unknown';
-  bool _isPhysicalDevice = true;
+  bool _isPhysicalDevice = false;
 
   EnvironmentCollector({DeviceInfoPlugin? deviceInfo, Battery? battery})
     : _deviceInfo = deviceInfo ?? DeviceInfoPlugin(),
       _battery = battery ?? Battery();
+
+  // ----------------------------------------------------------
+  // Initialize
+  // ----------------------------------------------------------
 
   Future<void> initialize() async {
     await _collectAppInfo();
     await _collectDeviceInfo();
   }
 
+  // ----------------------------------------------------------
+  // App Info
+  // ----------------------------------------------------------
+
   Future<void> _collectAppInfo() async {
     try {
       _packageInfo = await PackageInfo.fromPlatform();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('TraceX: Failed to collect app info: $e');
+
       _packageInfo = null;
     }
   }
 
+  // ----------------------------------------------------------
+  // Device Info
+  // ----------------------------------------------------------
+
   Future<void> _collectDeviceInfo() async {
     try {
-      if (Platform.isAndroid) {
+      // --------------------------------------------------------
+      // Web
+      // --------------------------------------------------------
+
+      if (kIsWeb) {
+        final info = await _deviceInfo.webBrowserInfo;
+
+        _osName = 'Web';
+
+        _osVersion = info.userAgent ?? 'Unknown';
+
+        _deviceModel = info.browserName.name;
+
+        // Browser cannot reliably determine
+        // whether the device is physical.
+        _isPhysicalDevice = false;
+
+        return;
+      }
+
+      // --------------------------------------------------------
+      // Android
+      // --------------------------------------------------------
+
+      if (defaultTargetPlatform == TargetPlatform.android) {
         final info = await _deviceInfo.androidInfo;
+        final memory = await _getMemoryInfo();
+
+        totalRamMb = memory['totalRamMb'];
+
+        freeRamMb = memory['freeRamMb'];
+
+        isLowMemory = memory['isLowMemory'];
 
         _osName = 'Android';
         _osVersion = info.version.release;
         _deviceModel = info.model;
         _isPhysicalDevice = info.isPhysicalDevice;
-      } else if (Platform.isIOS) {
+
+        return;
+      }
+
+      // --------------------------------------------------------
+      // iOS
+      // --------------------------------------------------------
+
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
         final info = await _deviceInfo.iosInfo;
+        final infoIOS = await IOSDeviceInfoCollector.getDeviceInfo();
+
+        freeRamMb = infoIOS['freeRamMb'];
+        totalRamMb = infoIOS['totalRamMb'];
+        isLowMemory = infoIOS['isLowMemory'];
 
         _osName = 'iOS';
         _osVersion = info.systemVersion;
         _deviceModel = info.utsname.machine;
         _isPhysicalDevice = info.isPhysicalDevice;
-      } else {
-        _osName = Platform.operatingSystem;
-        _osVersion = Platform.operatingSystemVersion;
+
+        return;
       }
-    } catch (_) {}
+
+      // --------------------------------------------------------
+      // Other Platforms
+      // --------------------------------------------------------
+
+      _osName = defaultTargetPlatform.name;
+      _osVersion = 'Unknown';
+      _deviceModel = 'Unknown';
+      _isPhysicalDevice = false;
+    } catch (e) {
+      debugPrint('TraceX: Failed to collect device info: $e');
+    }
   }
 
+  // ----------------------------------------------------------
+  // Memory Info
+  // ----------------------------------------------------------
+
+  Future<Map<String, dynamic>> _getMemoryInfo() async {
+    // --------------------------------------------------------
+    // Web
+    // --------------------------------------------------------
+
+    if (kIsWeb) {
+      return {'totalRamMb': 0, 'freeRamMb': 0, 'isLowMemory': false};
+    }
+
+    // --------------------------------------------------------
+    // Android
+    // --------------------------------------------------------
+
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
+          'getMemoryInfo',
+        );
+
+        return {
+          'totalRamMb': (result?['totalRamMb'] as num?)?.toInt() ?? 0,
+
+          'freeRamMb': (result?['freeRamMb'] as num?)?.toInt() ?? 0,
+
+          'isLowMemory': result?['isLowMemory'] as bool? ?? false,
+        };
+      } on PlatformException catch (e) {
+        debugPrint(
+          'TraceX: Memory channel error '
+          '${e.code}: ${e.message}',
+        );
+      } catch (e) {
+        debugPrint('TraceX: Failed to get memory info: $e');
+      }
+    }
+
+    // --------------------------------------------------------
+    // Fallback
+    // --------------------------------------------------------
+
+    return {'totalRamMb': 0, 'freeRamMb': 0, 'isLowMemory': false};
+  }
+
+  // ----------------------------------------------------------
+  // Collect Environment
+  // ----------------------------------------------------------
+
   Future<Environment> collect() async {
+    // --------------------------------------------------------
+    // Battery
+    // --------------------------------------------------------
+
     int batteryLevel = -1;
 
     try {
       batteryLevel = await _battery.batteryLevel;
-    } catch (_) {
-      batteryLevel = -1;
+    } catch (e) {
+      debugPrint('TraceX: Failed to get battery level: $e');
     }
+
+    // --------------------------------------------------------
+    // Environment
+    // --------------------------------------------------------
 
     return Environment(
       appVersion: _packageInfo == null
           ? 'Unknown'
           : '${_packageInfo!.version}+${_packageInfo!.buildNumber}',
 
-      runtimeVersion: 'Dart ${Platform.version}',
+      runtimeVersion: kIsWeb ? 'Dart Web' : 'Dart ${Platform.version}',
 
       osName: _osName,
 
@@ -81,14 +215,12 @@ class EnvironmentCollector {
 
       isPhysicalDevice: _isPhysicalDevice,
 
-      // TODO: implement RAM collector
-      freeRamMb: 0,
-      totalRamMb: 0,
+      freeRamMb: freeRamMb,
+      totalRamMb: totalRamMb,
 
       batteryLevel: batteryLevel,
 
-      // TODO: calculate using RAM information
-      isLowMemory: false,
+      isLowMemory: isLowMemory,
     );
   }
 }

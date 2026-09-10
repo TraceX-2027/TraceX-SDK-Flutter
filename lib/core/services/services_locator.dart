@@ -13,10 +13,16 @@ import 'package:tracex/domain/usecases/get_breadcrumb_details.dart';
 import 'package:tracex/domain/usecases/get_environment_details.dart';
 import 'package:tracex/domain/usecases/sent_crash_detiles.dart';
 
-final sl = GetIt.instance;
+final sl = GetIt.asNewInstance();
 
 class ServicesLocator {
-  static final _dio = Dio();
+  static final _dio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 5),
+      sendTimeout: const Duration(seconds: 5),
+      receiveTimeout: const Duration(seconds: 5),
+    ),
+  );
   static final EnvironmentCollector _environmentCollector =
       EnvironmentCollector();
   static final BreadcrumbCollector _breadcrumbCollector = BreadcrumbCollector();

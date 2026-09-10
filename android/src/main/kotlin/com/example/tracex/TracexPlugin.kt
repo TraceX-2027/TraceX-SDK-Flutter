@@ -1,23 +1,32 @@
 package com.example.tracex
 
+import android.app.ActivityManager
+import android.content.Context
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
 
-/** TracexPlugin */
-class TracexPlugin :
-    FlutterPlugin,
-    MethodCallHandler {
-    // The MethodChannel that will the communication between Flutter and native Android
-    //
-    // This local reference serves to register the plugin with the Flutter Engine and unregister it
-    // when the Flutter Engine is detached from the Activity
-    private lateinit var channel: MethodChannel
+class TracexPlugin : FlutterPlugin, MethodCallHandler {
 
-    override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
-        channel = MethodChannel(flutterPluginBinding.binaryMessenger, "tracex")
+    private lateinit var channel: MethodChannel
+    private lateinit var context: Context
+
+    companion object {
+        private const val CHANNEL_NAME = "tracex/environment"
+    }
+
+    override fun onAttachedToEngine(
+        flutterPluginBinding: FlutterPlugin.FlutterPluginBinding
+    ) {
+        context = flutterPluginBinding.applicationContext
+
+        channel = MethodChannel(
+            flutterPluginBinding.binaryMessenger,
+            CHANNEL_NAME
+        )
+
         channel.setMethodCallHandler(this)
     }
 
@@ -25,14 +34,57 @@ class TracexPlugin :
         call: MethodCall,
         result: Result
     ) {
-        if (call.method == "getPlatformVersion") {
-            result.success("Android ${android.os.Build.VERSION.RELEASE}")
-        } else {
-            result.notImplemented()
+        when (call.method) {
+
+            "getMemoryInfo" -> {
+                getMemoryInfo(result)
+            }
+
+            else -> {
+                result.notImplemented()
+            }
         }
     }
 
-    override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+   private fun getMemoryInfo(result: Result) {
+    try {
+        val activityManager =
+            context.getSystemService(
+                Context.ACTIVITY_SERVICE
+            ) as ActivityManager
+
+        val memoryInfo = ActivityManager.MemoryInfo()
+
+        activityManager.getMemoryInfo(memoryInfo)
+
+        val totalRamMb =
+            memoryInfo.totalMem / (1024 * 1024)
+
+        val freeRamMb =
+            memoryInfo.availMem / (1024 * 1024)
+
+        val isLowMemory =
+            memoryInfo.lowMemory
+
+        result.success(
+            mapOf(
+                "totalRamMb" to totalRamMb,
+                "freeRamMb" to freeRamMb,
+                "isLowMemory" to isLowMemory
+            )
+        )
+    } catch (e: Exception) {
+        result.error(
+            "MEMORY_ERROR",
+            "Failed to get memory information",
+            e.message
+        )
+    }
+}
+
+    override fun onDetachedFromEngine(
+        binding: FlutterPlugin.FlutterPluginBinding
+    ) {
         channel.setMethodCallHandler(null)
     }
 }

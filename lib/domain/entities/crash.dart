@@ -23,18 +23,4 @@ class Crash {
     required this.environment,
     required this.breadcrumbs,
   });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'project_key': projectKey,
-      'platform': platform,
-      'language': language,
-      'timestamp': timestamp.toUtc().toIso8601String(),
-      'exception_type': exceptionType,
-      'error_message': errorMessage,
-      'stack_trace': stackTrace,
-      'environment': environment.toJson(),
-      'breadcrumbs': breadcrumbs.map((e) => e.toJson()).toList(),
-    };
-  }
 }

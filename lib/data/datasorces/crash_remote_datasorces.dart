@@ -28,7 +28,8 @@ class CrashRemoteDatasorces extends BaseCrashRemoteDatasorces {
       );
 
       debugPrint(crash.toJson().toString());
-      debugPrint(crash.breadcrumbs.toString());
+      debugPrint(crash.environment.freeRamMb.toString());
+      debugPrint(crash.environment.totalRamMb.toString());
     } on DioException catch (e) {
       throw Exception('Failed to send crash: ${e.message}');
     }
