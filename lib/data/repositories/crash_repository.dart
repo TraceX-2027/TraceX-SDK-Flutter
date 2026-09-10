@@ -1,12 +1,12 @@
-import 'package:tracex/data/datasorces/crash_remote_datasorces.dart';
+import 'package:tracex/data/datasources/crash_remote_datasource.dart';
 import 'package:tracex/data/models/crashes_model.dart';
 import 'package:tracex/domain/entities/crash.dart';
 import 'package:tracex/domain/repositories/base_crash_repository.dart';
 
-class CrashRepositoriy extends BaseCrashRepository {
-  final BaseCrashRemoteDatasorces baseCrashRemoteDatasorces;
+class CrashRepository extends BaseCrashRepository {
+  final BaseCrashRemoteDatasources baseCrashRemoteDatasorces;
 
-  CrashRepositoriy({required this.baseCrashRemoteDatasorces});
+  CrashRepository({required this.baseCrashRemoteDatasorces});
 
   @override
   Future<void> sentCrashDetils(Crash crash) async {

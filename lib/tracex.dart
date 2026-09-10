@@ -12,7 +12,7 @@ import 'package:tracex/domain/repositories/base_crash_repository.dart';
 import 'package:tracex/domain/repositories/base_environment_repository.dart';
 import 'package:tracex/domain/usecases/get_breadcrumb_details.dart';
 import 'package:tracex/domain/usecases/get_environment_details.dart';
-import 'package:tracex/domain/usecases/sent_crash_detiles.dart';
+import 'package:tracex/domain/usecases/send_crash_details.dart';
 
 class TraceX {
   TraceX._();
@@ -22,13 +22,18 @@ class TraceX {
 
   static String? _projectKey;
 
-  static SentCrashDetiles? _sendCrashDetails;
+  static SentCrashDetils? _sendCrashDetails;
   static GetEnvironmentDetails? _getEnvironmentDetails;
   static GetBreadcrumbDetails? _getBreadcrumbDetails;
 
   static CrashRateLimiter? _rateLimiter;
   static CrashQueue? _crashQueue;
-  static Crash? _crashLast;
+
+  // الاحتفاظ بالمعلومات الأساسية للخطأ الأخير + توقيته لتفادي الحظر الدائم
+  static String? _lastExceptionType;
+  static String? _lastErrorMessage;
+  static String? _lastStackTrace;
+  static DateTime? _lastCrashTimestamp;
 
   static bool _initialized = false;
   static bool _initializing = false;
@@ -64,7 +69,7 @@ class TraceX {
       // Initialize services
       ServicesLocator.init();
 
-      _sendCrashDetails = SentCrashDetiles(
+      _sendCrashDetails = SentCrashDetils(
         baseCrashRepository: sl<BaseCrashRepository>(),
       );
 
@@ -89,11 +94,10 @@ class TraceX {
       await _getEnvironmentDetails!.initialize();
 
       // -----------------------------------------
-      // Flutter errors
+      // Flutter & Platform Error Handlers
       // -----------------------------------------
 
       _previousFlutterErrorHandler = FlutterError.onError;
-
       FlutterError.onError = (FlutterErrorDetails details) {
         unawaited(
           _captureException(
@@ -106,12 +110,7 @@ class TraceX {
         _previousFlutterErrorHandler?.call(details);
       };
 
-      // -----------------------------------------
-      // Platform errors
-      // -----------------------------------------
-
       _previousPlatformErrorHandler = PlatformDispatcher.instance.onError;
-
       PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
         unawaited(_captureException(error, stack));
 
@@ -126,7 +125,16 @@ class TraceX {
       debugPrint('TraceX: Initialization failed: $e');
       debugPrint('$stack');
 
+      // -----------------------------------------
+      // Cleanup / Rollback in case of failure
+      // -----------------------------------------
       _initialized = false;
+
+      // Restore previous error handlers
+      FlutterError.onError = _previousFlutterErrorHandler;
+      PlatformDispatcher.instance.onError = _previousPlatformErrorHandler;
+
+      rethrow;
     } finally {
       _initializing = false;
     }
@@ -149,16 +157,22 @@ class TraceX {
 
     final exceptionType = error.runtimeType.toString();
     final errorMessage = error.toString();
-
-    // =========================================================
-    // From here we can use await safely
-    // =========================================================
+    final stackTraceStr = stackTrace.toString();
+    final now = DateTime.now().toUtc();
 
     try {
-      // -----------------------------------------
-      // Rate Limit
-      // -----------------------------------------
+      // 1. Check Deduplication FIRST (Synchronous & Zero Overhead)
+      if (isDuplicate(
+        exceptionType: exceptionType,
+        errorMessage: errorMessage,
+        stackTrace: stackTraceStr,
+        timestamp: now,
+      )) {
+        debugPrint('TraceX: Duplicate crash ignored.');
+        return;
+      }
 
+      // 2. Rate Limit Check (consumes quota only for UNIQUE errors)
       final rateLimiter = _rateLimiter;
 
       if (rateLimiter == null) {
@@ -168,14 +182,16 @@ class TraceX {
 
       if (!rateLimiter.allow()) {
         debugPrint('TraceX: Crash rate limit exceeded.');
-
         return;
       }
 
-      // -----------------------------------------
-      // Get dependencies
-      // -----------------------------------------
+      // 3. Update Last Crash Cache immediately after passing checks
+      _lastExceptionType = exceptionType;
+      _lastErrorMessage = errorMessage;
+      _lastStackTrace = stackTraceStr;
+      _lastCrashTimestamp = now;
 
+      // 4. Get dependencies
       final getEnvironmentDetails = _getEnvironmentDetails;
       final getBreadcrumbDetails = _getBreadcrumbDetails;
       final crashQueue = _crashQueue;
@@ -186,74 +202,57 @@ class TraceX {
           crashQueue == null ||
           sendCrashDetails == null) {
         debugPrint('TraceX: Required services are not initialized.');
-
         return;
       }
 
-      // -----------------------------------------
-      // Collect Environment
-      // -----------------------------------------
-
+      // 5. Heavy Async Work (Collected ONLY for approved crashes)
       final environment = await getEnvironmentDetails.execute();
-
-      // -----------------------------------------
-      // Collect Breadcrumbs
-      // -----------------------------------------
-
       final breadcrumbs = await getBreadcrumbDetails.execute();
 
-      // -----------------------------------------
-      // Build Crash
-      // -----------------------------------------
-
+      // 6. Build and Enqueue Crash
       final crash = Crash(
         projectKey: _projectKey!,
         platform: _platform,
         language: _language,
-        timestamp: DateTime.now().toUtc(),
+        timestamp: now,
         exceptionType: exceptionType,
         errorMessage: errorMessage,
-        stackTrace: stackTrace.toString(),
+        stackTrace: stackTraceStr,
         environment: environment,
         breadcrumbs: breadcrumbs,
       );
 
-      // -----------------------------------------
-      // Add Crash To Queue
-      // -----------------------------------------
-      if (_crashLast == null || !isDuplicate(crash, _crashLast!)) {
-        _crashLast = crash;
+      crashQueue.add(crash);
 
-        crashQueue.add(crash);
+      debugPrint(
+        'TraceX: Crash added to queue '
+        '(size: ${crashQueue.length})',
+      );
 
-        debugPrint(
-          'TraceX: Crash added to queue '
-          '(size: ${crashQueue.length})',
-        );
-
-        await crashQueue.process(sendCrashDetails.execute);
-      } else {
-        debugPrint('TraceX: Duplicate crash ignored.');
-      }
+      await crashQueue.process(sendCrashDetails.execute);
     } catch (e, stack) {
       debugPrint('TraceX: Failed to capture crash: $e');
-
       debugPrint('TraceX: $stack');
     }
   }
-}
 
-bool isDuplicate(
-  Crash crash,
-  Crash lastCrash, {
-  Duration cooldown = const Duration(minutes: 5),
-}) {
-  final isSameException =
-      crash.exceptionType == lastCrash.exceptionType &&
-      crash.errorMessage == lastCrash.errorMessage &&
-      crash.stackTrace == lastCrash.stackTrace;
+  // Helper method للتحقق السريع المباشر
+  static bool isDuplicate({
+    required String exceptionType,
+    required String errorMessage,
+    required String stackTrace,
+    required DateTime timestamp,
+    Duration cooldown = const Duration(minutes: 5),
+  }) {
+    if (_lastCrashTimestamp == null) return false;
 
-  if (!isSameException) return false;
+    final isSameException =
+        _lastExceptionType == exceptionType &&
+        _lastErrorMessage == errorMessage &&
+        _lastStackTrace == stackTrace;
 
-  return crash.timestamp.difference(lastCrash.timestamp) < cooldown;
+    if (!isSameException) return false;
+
+    return timestamp.difference(_lastCrashTimestamp!) < cooldown;
+  }
 }

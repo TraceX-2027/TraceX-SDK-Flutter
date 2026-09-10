@@ -5,7 +5,6 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:tracex/data/collectors/ios_collector/ios_device_info_collector.dart';
 
 import 'package:tracex/domain/entities/environment.dart';
 
@@ -16,9 +15,11 @@ class EnvironmentCollector {
   final Battery _battery;
 
   PackageInfo? _packageInfo;
-  var freeRamMb = 0;
-  var totalRamMb = 0;
+
+  int freeRamMb = 0;
+  int totalRamMb = 0;
   bool isLowMemory = false;
+
   String _osName = 'Unknown';
   String _osVersion = 'Unknown';
   String _deviceModel = 'Unknown';
@@ -65,9 +66,7 @@ class EnvironmentCollector {
         final info = await _deviceInfo.webBrowserInfo;
 
         _osName = 'Web';
-
         _osVersion = info.userAgent ?? 'Unknown';
-
         _deviceModel = info.browserName.name;
 
         // Browser cannot reliably determine
@@ -85,11 +84,11 @@ class EnvironmentCollector {
         final info = await _deviceInfo.androidInfo;
         final memory = await _getMemoryInfo();
 
-        totalRamMb = memory['totalRamMb'];
+        totalRamMb = (memory['totalRamMb'] as num?)?.toInt() ?? 0;
 
-        freeRamMb = memory['freeRamMb'];
+        freeRamMb = (memory['freeRamMb'] as num?)?.toInt() ?? 0;
 
-        isLowMemory = memory['isLowMemory'];
+        isLowMemory = memory['isLowMemory'] as bool? ?? false;
 
         _osName = 'Android';
         _osVersion = info.version.release;
@@ -105,11 +104,13 @@ class EnvironmentCollector {
 
       if (defaultTargetPlatform == TargetPlatform.iOS) {
         final info = await _deviceInfo.iosInfo;
-        final infoIOS = await IOSDeviceInfoCollector.getDeviceInfo();
+        final memory = await _getMemoryInfo();
 
-        freeRamMb = infoIOS['freeRamMb'];
-        totalRamMb = infoIOS['totalRamMb'];
-        isLowMemory = infoIOS['isLowMemory'];
+        totalRamMb = (memory['totalRamMb'] as num?)?.toInt() ?? 0;
+
+        freeRamMb = (memory['freeRamMb'] as num?)?.toInt() ?? 0;
+
+        isLowMemory = memory['isLowMemory'] as bool? ?? false;
 
         _osName = 'iOS';
         _osVersion = info.systemVersion;
@@ -146,10 +147,11 @@ class EnvironmentCollector {
     }
 
     // --------------------------------------------------------
-    // Android
+    // Android & iOS
     // --------------------------------------------------------
 
-    if (defaultTargetPlatform == TargetPlatform.android) {
+    if (defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS) {
       try {
         final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
           'getMemoryInfo',
@@ -203,14 +205,13 @@ class EnvironmentCollector {
     return Environment(
       appVersion: _packageInfo == null
           ? 'Unknown'
-          : '${_packageInfo!.version}+${_packageInfo!.buildNumber}',
+          : '${_packageInfo!.version}+'
+                '${_packageInfo!.buildNumber}',
 
       runtimeVersion: kIsWeb ? 'Dart Web' : 'Dart ${Platform.version}',
 
       osName: _osName,
-
       osVersion: _osVersion,
-
       deviceModel: _deviceModel,
 
       isPhysicalDevice: _isPhysicalDevice,
