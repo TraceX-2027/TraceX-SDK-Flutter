@@ -1,5 +1,5 @@
 import 'package:tracex/domain/entities/crash.dart';
 
 abstract class BaseCrashRepository {
-  Future<void> sentCrashDetils(Crash crash);
+  Future<void> sendCrashDetils(Crash crash);
 }

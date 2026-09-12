@@ -30,7 +30,7 @@ class ServicesLocator {
   static void init() {
     _registerCrash();
     _registerEnvironment();
-    _registerBreadcrumt();
+    _registerBreadcrumts();
   }
 
   static void _registerCrash() {
@@ -39,11 +39,11 @@ class ServicesLocator {
     );
 
     sl.registerLazySingleton<BaseCrashRepository>(
-      () => CrashRepository(baseCrashRemoteDatasorces: sl()),
+      () => CrashRepository(baseCrashRemoteDatasources: sl()),
     );
 
-    sl.registerLazySingleton<SentCrashDetils>(
-      () => SentCrashDetils(baseCrashRepository: sl()),
+    sl.registerLazySingleton<SendCrashDetils>(
+      () => SendCrashDetils(baseCrashRepository: sl()),
     );
   }
 
@@ -57,7 +57,7 @@ class ServicesLocator {
     );
   }
 
-  static void _registerBreadcrumt() {
+  static void _registerBreadcrumts() {
     sl.registerLazySingleton<BaseBreadcrumbRepository>(
       () => BreadcrumbRepository(breadcrumbCollector: _breadcrumbCollector),
     );

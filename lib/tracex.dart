@@ -22,7 +22,7 @@ class TraceX {
 
   static String? _projectKey;
 
-  static SentCrashDetils? _sendCrashDetails;
+  static SendCrashDetils? _sendCrashDetails;
   static GetEnvironmentDetails? _getEnvironmentDetails;
   static GetBreadcrumbDetails? _getBreadcrumbDetails;
 
@@ -69,7 +69,7 @@ class TraceX {
       // Initialize services
       ServicesLocator.init();
 
-      _sendCrashDetails = SentCrashDetils(
+      _sendCrashDetails = SendCrashDetils(
         baseCrashRepository: sl<BaseCrashRepository>(),
       );
 

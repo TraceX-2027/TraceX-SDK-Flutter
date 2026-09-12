@@ -4,12 +4,12 @@ import 'package:tracex/domain/entities/crash.dart';
 import 'package:tracex/domain/repositories/base_crash_repository.dart';
 
 class CrashRepository extends BaseCrashRepository {
-  final BaseCrashRemoteDatasources baseCrashRemoteDatasorces;
+  final BaseCrashRemoteDatasources baseCrashRemoteDatasources;
 
-  CrashRepository({required this.baseCrashRemoteDatasorces});
+  CrashRepository({required this.baseCrashRemoteDatasources});
 
   @override
-  Future<void> sentCrashDetils(Crash crash) async {
+  Future<void> sendCrashDetils(Crash crash) async {
     try {
       final crashesModel = CrashesModel(
         projectKey: crash.projectKey,
@@ -23,7 +23,7 @@ class CrashRepository extends BaseCrashRepository {
         breadcrumbs: crash.breadcrumbs,
       );
 
-      await baseCrashRemoteDatasorces.sentCrashDetails(crashesModel);
+      await baseCrashRemoteDatasources.sentCrashDetails(crashesModel);
     } catch (e) {
       throw Exception('Failed to send crash: $e');
     }
