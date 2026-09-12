@@ -8,8 +8,13 @@ environment:
   flutter: ">=1.17.0"
 
 dependencies:
+  battery_plus: ^7.1.1
+  device_info_plus: ^12.4.0
+  dio: ^5.11.0
   flutter:
     sdk: flutter
+  get_it: ^9.2.1
+  package_info_plus: ^9.0.1
 
 dev_dependencies:
   flutter_test:
@@ -21,6 +26,11 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.example.tracex
+        pluginClass: TracexPlugin
 
   # To add assets to your package, add an assets section, like this:
   # assets:
