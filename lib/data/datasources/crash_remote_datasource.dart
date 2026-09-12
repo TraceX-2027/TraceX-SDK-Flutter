@@ -7,25 +7,25 @@ abstract class BaseCrashRemoteDatasources {
   Future<void> sentCrashDetails(CrashesModel crash);
 }
 
-class CrashRemoteDatasources extends BaseCrashRemoteDatasources {
+class CrashRemoteDatasource extends BaseCrashRemoteDatasources {
   final Dio dio;
 
-  CrashRemoteDatasources({required this.dio});
+  CrashRemoteDatasource({required this.dio});
   @override
   Future<void> sentCrashDetails(CrashesModel crash) async {
     try {
-      // await dio.post(
-      //   ApiConst.crashUrl,
+      await dio.post(
+        ApiConst.crashUrl,
 
-      //   options: Options(
-      //     headers: {
-      //       'X-TraceX-Key': crash.projectKey,
-      //       'Content-Type': 'application/json',
-      //     },
-      //   ),
+        options: Options(
+          headers: {
+            'X-TraceX-Key': crash.projectKey,
+            'Content-Type': 'application/json',
+          },
+        ),
 
-      //   data: crash.toJson(),
-      // );
+        data: crash.toJson(),
+      );
 
       debugPrint(crash.toJson().toString());
       debugPrint(crash.environment.freeRamMb.toString());

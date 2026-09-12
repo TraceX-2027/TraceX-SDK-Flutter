@@ -35,7 +35,7 @@ class ServicesLocator {
 
   static void _registerCrash() {
     sl.registerLazySingleton<BaseCrashRemoteDatasources>(
-      () => CrashRemoteDatasources(dio: _dio),
+      () => CrashRemoteDatasource(dio: _dio),
     );
 
     sl.registerLazySingleton<BaseCrashRepository>(
