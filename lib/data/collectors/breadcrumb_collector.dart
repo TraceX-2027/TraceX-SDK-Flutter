@@ -4,7 +4,8 @@ class BreadcrumbCollector {
   static final List<BreadcrumbModel> _breadcrumbs = [];
   static int _sequenceOrder = 0;
 
-  List<BreadcrumbModel> get breadcrumbs => List.unmodifiable(_breadcrumbs);
+  List<BreadcrumbModel> get breadcrumbs =>
+      List.unmodifiable(List<BreadcrumbModel>.from(_breadcrumbs));
 
   static void addBreadcrumb({
     required String category,
@@ -21,12 +22,17 @@ class BreadcrumbCollector {
         category: category,
         action: action,
         target: target,
-        data: Map.unmodifiable(data),
+        data: Map.unmodifiable(Map<String, dynamic>.from(data)),
       ),
     );
 
     if (_breadcrumbs.length > 50) {
       _breadcrumbs.removeAt(0);
     }
+  }
+
+  static void clear() {
+    _breadcrumbs.clear();
+    _sequenceOrder = 0;
   }
 }

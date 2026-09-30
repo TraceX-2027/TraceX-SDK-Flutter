@@ -1,12 +1,12 @@
 import 'package:tracex/domain/entities/crash.dart';
 import 'package:tracex/domain/repositories/base_crash_repository.dart';
 
-class SendCrashDetils {
+class SendCrashDetails {
   final BaseCrashRepository baseCrashRepository;
 
-  SendCrashDetils({required this.baseCrashRepository});
+  SendCrashDetails({required this.baseCrashRepository});
 
   Future<void> execute(Crash crash) async {
-    await baseCrashRepository.sendCrashDetils(crash);
+    await baseCrashRepository.sendCrashDetails(crash);
   }
 }

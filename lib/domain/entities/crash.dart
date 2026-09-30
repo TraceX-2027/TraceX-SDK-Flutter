@@ -5,7 +5,7 @@ class Crash {
   final String projectKey;
   final String platform;
   final String language;
-  final DateTime timestamp;
+  final DateTime occurredAt;
   final String exceptionType;
   final String errorMessage;
   final String stackTrace;
@@ -16,7 +16,7 @@ class Crash {
     required this.projectKey,
     required this.platform,
     required this.language,
-    required this.timestamp,
+    required this.occurredAt,
     required this.exceptionType,
     required this.errorMessage,
     required this.stackTrace,
