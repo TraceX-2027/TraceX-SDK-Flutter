@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:math';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -85,51 +86,47 @@ class CrashQueue {
     for (int attempt = 1; attempt <= _maxRetries; attempt++) {
       try {
         await sendCrash(crash);
-
-        await crashOffline.saveCrash(crash);
-        debugPrint("TraceX:Save offline Done! ");
-
         return true;
       } catch (e) {
         debugPrint('TraceX: Send attempt $attempt/$_maxRetries failed: $e');
 
-        // 401 Unauthorized -> Pause telemetry indefinitely
-
+        // 401 Unauthorized -> Pause telemetry and discard payload immediately (Do NOT save offline)
         if (e is DioException && e.response?.statusCode == 401) {
           _telemetryPaused = true;
 
           debugPrint('[TraceX] Invalid API Key. Telemetry paused.');
-
-          if (offlineBuffer && !fromOffline) await _saveOffline(crash);
-
+          if (fromOffline) await crashOffline.deleteCrash(crash);
           return false;
         }
 
-        // 429 Rate Limited -> Pause for Retry-After duration
+        // 429 Rate Limited -> Pause for Retry-After duration and buffer to offline
         if (e is DioException && e.response?.statusCode == 429) {
           final retryAfter =
               int.tryParse(e.response?.headers.value('Retry-After') ?? '') ??
               60;
-
           _telemetryPaused = true;
-
           debugPrint('[TraceX] Rate limited. Pausing for $retryAfter seconds.');
-
           if (offlineBuffer && !fromOffline) await _saveOffline(crash);
-
           unawaited(_resumeAfterRateLimit(retryAfter, sendCrash));
-
           return false;
         }
 
-        // Non-retryable error (4xx) or Last Attempt
-        if (!_isRetryable(e) || attempt == _maxRetries) {
+        // Non-retryable client errors (400, 403, 404, etc.) -> Discard immediately (Do NOT save offline)
+        if (!_isRetryable(e)) {
+          debugPrint('[TraceX] Non-retryable error ($e). Discarding crash.');
+          if (fromOffline) await crashOffline.deleteCrash(crash);
+          return false;
+        }
+
+        // Last attempt failed for retryable errors (5xx / timeouts) -> Save to offline buffer
+        if (attempt == _maxRetries) {
           if (offlineBuffer && !fromOffline) await _saveOffline(crash);
           return false;
         }
 
-        // Exponential backoff delay (1s, 2s, 4s...)
-        await Future.delayed(Duration(seconds: 1 << (attempt - 1)));
+        // Exponential backoff with randomized jitter (0-500ms) to prevent thundering herd spikes
+        final delayMs = (1 << (attempt - 1)) * 1000 + Random().nextInt(500);
+        await Future.delayed(Duration(milliseconds: delayMs));
       }
     }
     return false;

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate'; // 👈 استيراد مكتبة الـ Isolate
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -16,38 +17,33 @@ class CrashRemoteDatasource extends BaseCrashRemoteDatasource {
 
   @override
   Future<void> sendCrashDetails(CrashesModel crash) async {
-    final jsonData = jsonEncode(crash.toJson());
+    final preparedPayload = await Isolate.run(() {
+      final jsonStr = jsonEncode(crash.toJson());
+      final bytes = utf8.encode(jsonStr);
 
-    final jsonBytes = utf8.encode(jsonData);
-    if (jsonBytes.length > 5 * 1024) {
-      final compressedData = gzip.encode(jsonBytes);
+      if (bytes.length > 5 * 1024) {
+        return {'data': gzip.encode(bytes), 'isGzip': true};
+      }
 
-      await dio.post(
-        '/crashes',
-        options: Options(
-          headers: {
-            'X-TraceX-Key': crash.projectKey,
-            'Content-Type': 'application/json',
-            'Content-Encoding': 'gzip',
-            'User-Agent': 'TraceX-Flutter-SDK/1.0.0',
-          },
-        ),
-        data: compressedData,
-      );
+      return {'data': jsonStr, 'isGzip': false};
+    });
 
-      return;
-    }
+    final isGzip = preparedPayload['isGzip'] as bool;
+    final payloadData = preparedPayload['data'];
 
     await dio.post(
-      '/crashes',
+      'crashes',
       options: Options(
         headers: {
           'X-TraceX-Key': crash.projectKey,
           'Content-Type': 'application/json',
+          if (isGzip) 'Content-Encoding': 'gzip',
           'User-Agent': 'TraceX-Flutter-SDK/1.0.0',
         },
       ),
-      data: jsonData,
+      data: isGzip
+          ? Stream.fromIterable([payloadData as List<int>])
+          : payloadData,
     );
 
     debugPrint(crash.toJson().toString());

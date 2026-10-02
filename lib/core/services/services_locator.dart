@@ -23,7 +23,6 @@ final sl = GetIt.asNewInstance();
 class ServicesLocator {
   static final Dio _dio = Dio(
     BaseOptions(
-      baseUrl: ApiConst.baseUrl,
       connectTimeout: const Duration(seconds: 5),
       sendTimeout: const Duration(seconds: 5),
       receiveTimeout: const Duration(seconds: 5),
@@ -42,12 +41,17 @@ class ServicesLocator {
 
   static bool _initialized = false;
 
-  static Future<void> init() async {
+  static Future<void> init({String? endpoint}) async {
     if (_initialized) {
       return;
     }
 
     try {
+      // تعيين الرابط الممرر أو استخدام رابط الإنتاج الافتراضي من ApiConst
+      _dio.options.baseUrl = (endpoint != null && endpoint.trim().isNotEmpty)
+          ? endpoint.trim()
+          : ApiConst.baseUrl;
+
       _registerCrash();
 
       await _registerOfflineCrash();
@@ -59,9 +63,7 @@ class ServicesLocator {
       _initialized = true;
     } catch (e) {
       await sl.reset();
-
       _initialized = false;
-
       rethrow;
     }
   }

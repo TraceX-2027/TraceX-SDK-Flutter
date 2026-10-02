@@ -20,6 +20,7 @@ class CrashRepository extends BaseCrashRepository {
       stackTrace: crash.stackTrace,
       environment: crash.environment,
       breadcrumbs: crash.breadcrumbs,
+      id: crash.id,
     );
 
     await baseCrashRemoteDatasources.sendCrashDetails(crashesModel);

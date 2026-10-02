@@ -13,6 +13,7 @@ class CrashesModel extends Crash {
     required super.stackTrace,
     required super.environment,
     required super.breadcrumbs,
+    super.id,
   });
 
   Map<String, dynamic> toJson() {

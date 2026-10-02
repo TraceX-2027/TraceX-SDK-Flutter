@@ -7,6 +7,9 @@ part 'crash_hive_model.g.dart';
 
 @HiveType(typeId: 0)
 class CrashHiveModel extends HiveObject {
+  @HiveField(9)
+  final dynamic id;
+
   @HiveField(0)
   final String projectKey;
 
@@ -35,6 +38,7 @@ class CrashHiveModel extends HiveObject {
   final List<Map<String, dynamic>> breadcrumbs;
 
   CrashHiveModel({
+    this.id,
     required this.projectKey,
     required this.platform,
     required this.language,
@@ -83,6 +87,7 @@ class CrashHiveModel extends HiveObject {
   Crash toEntity() {
     return Crash(
       projectKey: projectKey,
+      id: key,
       platform: platform,
       language: language,
       occurredAt: occurredAt,

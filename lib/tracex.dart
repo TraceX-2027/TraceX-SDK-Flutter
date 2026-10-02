@@ -1,10 +1,10 @@
 import 'dart:async';
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:tracex/core/services/crash_queue.dart';
-import 'package:tracex/core/services/services_locator.dart';
 import 'package:tracex/core/services/crash_rate_limiter.dart';
+import 'package:tracex/core/services/services_locator.dart';
 import 'package:tracex/domain/entities/breadcrumb.dart';
 import 'package:tracex/domain/entities/crash.dart';
 import 'package:tracex/domain/usecases/get_breadcrumb_details.dart';
@@ -15,10 +15,14 @@ import 'package:tracex/domain/usecases/send_crash_details.dart';
 class TraceX {
   TraceX._();
 
+  static const String defaultEndpoint =
+      'https://tracex-api.kareemadel.com/api/v1';
+
   static const String _platform = 'flutter';
   static const String _language = 'dart';
 
   static String? _projectKey;
+  static bool _enableLogging = false;
 
   static SendCrashDetails? _sendCrashDetails;
   static GetEnvironmentDetails? _getEnvironmentDetails;
@@ -28,6 +32,7 @@ class TraceX {
   static CrashRateLimiter? _rateLimiter;
   static CrashQueue? _crashQueue;
 
+  // سجل بصمات الكراشات لمنع التكرار بدقة عالية
   static final Map<int, DateTime> _crashHistory = {};
 
   static bool _initialized = false;
@@ -40,12 +45,20 @@ class TraceX {
   static bool Function(Object error, StackTrace stack)?
   _previousPlatformErrorHandler;
 
+  static void _log(String message) {
+    if (_enableLogging) {
+      debugPrint(message);
+    }
+  }
+
   // -----------------------------------------
   // Initialize
   // -----------------------------------------
 
   static Future<void> initialize({
     required String projectKey,
+    String? endpoint,
+    bool enableLogging = false,
     bool offlineBuffer = true,
     bool captureBreadcrumbs = true,
   }) async {
@@ -61,17 +74,21 @@ class TraceX {
 
     try {
       _projectKey = projectKey;
-
+      _enableLogging = enableLogging;
       _offlineBuffer = offlineBuffer;
       _captureBreadcrumbs = captureBreadcrumbs;
+
+      final targetEndpoint = (endpoint != null && endpoint.trim().isNotEmpty)
+          ? endpoint.trim()
+          : defaultEndpoint;
 
       WidgetsFlutterBinding.ensureInitialized();
 
       // -----------------------------------------
-      // Initialize Services
+      // Initialize Services with Target Endpoint
       // -----------------------------------------
 
-      await ServicesLocator.init();
+      await ServicesLocator.init(endpoint: targetEndpoint);
 
       // -----------------------------------------
       // Get Dependencies From GetIt
@@ -112,12 +129,11 @@ class TraceX {
       await _getEnvironmentDetails!.initialize();
 
       // -----------------------------------------
-      // Flutter Error Handler
+      // Flutter Error Handler (Microtask Queue)
       // -----------------------------------------
 
       _previousFlutterErrorHandler = FlutterError.onError;
 
-      //  FlutterError.onError:
       FlutterError.onError = (FlutterErrorDetails details) {
         scheduleMicrotask(() {
           _captureException(
@@ -125,19 +141,27 @@ class TraceX {
             details.stack ?? StackTrace.current,
           );
         });
+
         _previousFlutterErrorHandler?.call(details);
       };
 
-      //  PlatformDispatcher.instance.onError:
+      // -----------------------------------------
+      // Platform Error Handler (Microtask Queue)
+      // -----------------------------------------
+
+      _previousPlatformErrorHandler = PlatformDispatcher.instance.onError;
+
       PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
         scheduleMicrotask(() {
           _captureException(error, stack);
         });
+
         return _previousPlatformErrorHandler?.call(error, stack) ?? false;
       };
+
       _initialized = true;
 
-      debugPrint('TraceX: Initialized successfully.');
+      _log('TraceX: Initialized successfully with endpoint: $targetEndpoint');
     } catch (e, stack) {
       debugPrint('TraceX: Initialization failed: $e');
       debugPrint('$stack');
@@ -178,9 +202,7 @@ class TraceX {
     StackTrace stackTrace,
   ) async {
     if (!_initialized) {
-      debugPrint(
-        'TraceX: Ignored exception because TraceX is not initialized.',
-      );
+      _log('TraceX: Ignored exception because TraceX is not initialized.');
       return;
     }
 
@@ -188,17 +210,19 @@ class TraceX {
     final errorMessage = error.toString();
     final stackTraceStr = stackTrace.toString();
     final occurredAt = DateTime.now().toUtc();
+
     try {
       // -----------------------------------------
-      // 1. Deduplication
+      // 1. Deduplication (خوارزمية منع التكرار بالبصمة)
       // -----------------------------------------
 
       if (_isDuplicate(
         exceptionType: exceptionType,
+        errorMessage: errorMessage,
         stackTrace: stackTraceStr,
-        occurredAt: occurredAt,
+        timestamp: occurredAt,
       )) {
-        debugPrint('TraceX: Duplicate crash ignored.');
+        _log('TraceX: Duplicate crash ignored.');
         return;
       }
 
@@ -208,12 +232,12 @@ class TraceX {
 
       final rateLimiter = _rateLimiter;
       if (rateLimiter == null) {
-        debugPrint('TraceX: Rate limiter is not initialized.');
+        _log('TraceX: Rate limiter is not initialized.');
         return;
       }
 
       if (!rateLimiter.allow()) {
-        debugPrint('TraceX: Crash rate limit exceeded.');
+        _log('TraceX: Crash rate limit exceeded.');
         return;
       }
 
@@ -229,7 +253,7 @@ class TraceX {
       if (getEnvironmentDetails == null ||
           crashQueue == null ||
           sendCrashDetails == null) {
-        debugPrint('TraceX: Required services are not initialized.');
+        _log('TraceX: Required services are not initialized.');
         return;
       }
 
@@ -248,7 +272,7 @@ class TraceX {
           : <Breadcrumb>[];
 
       // -----------------------------------------
-      // 6. Build Crash
+      // 6. Build Crash (Standardized occurredAt)
       // -----------------------------------------
 
       final crash = Crash(
@@ -269,7 +293,7 @@ class TraceX {
 
       await crashQueue.add(crash);
 
-      debugPrint('TraceX: Crash added to queue (size: ${crashQueue.length})');
+      _log('TraceX: Crash added to queue (size: ${crashQueue.length})');
 
       // -----------------------------------------
       // 8. Process Queue
@@ -288,21 +312,22 @@ class TraceX {
 
   static bool _isDuplicate({
     required String exceptionType,
+    required String errorMessage,
     required String stackTrace,
-    required DateTime occurredAt,
+    required DateTime timestamp,
     Duration cooldown = const Duration(minutes: 5),
   }) {
     final stackLines = stackTrace.trim().split('\n').take(2).join('\n');
 
-    final fingerprint = Object.hash(exceptionType, stackLines);
+    final fingerprint = Object.hash(exceptionType, errorMessage, stackLines);
 
     final lastSeen = _crashHistory[fingerprint];
 
-    if (lastSeen != null && occurredAt.difference(lastSeen) < cooldown) {
+    if (lastSeen != null && timestamp.difference(lastSeen) < cooldown) {
       return true;
     }
 
-    _crashHistory[fingerprint] = occurredAt;
+    _crashHistory[fingerprint] = timestamp;
 
     if (_crashHistory.length > 50) {
       _crashHistory.remove(_crashHistory.keys.first);

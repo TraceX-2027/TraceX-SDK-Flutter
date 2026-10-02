@@ -5,7 +5,9 @@ import 'package:tracex/domain/repositories/base_crash_offline_repository.dart';
 
 class CrashOfflineRepository extends BaseCrashOfflineRepository {
   final BaseCrashOfflineDatasource datasource;
+
   CrashOfflineRepository({required this.datasource});
+
   @override
   Future<void> saveCrash(Crash crash) async {
     final hiveCrash = CrashHiveModel.fromEntity(crash);
@@ -22,22 +24,10 @@ class CrashOfflineRepository extends BaseCrashOfflineRepository {
 
   @override
   Future<void> deleteCrash(Crash crash) async {
-    final cachedCrashes = datasource.getCachedCrashes();
-    for (final cachedCrash in cachedCrashes) {
-      final entity = cachedCrash.toEntity();
-      if (_isSameCrash(entity, crash)) {
-        await datasource.deleteCrash(cachedCrash.key);
-        return;
-      }
+    if (crash.id != null) {
+      await datasource.deleteCrash(crash.id);
+      return;
     }
-  }
-
-  bool _isSameCrash(Crash first, Crash second) {
-    return first.occurredAt.toUtc().toIso8601String() ==
-            second.occurredAt.toUtc().toIso8601String() &&
-        first.exceptionType == second.exceptionType &&
-        first.errorMessage == second.errorMessage &&
-        first.stackTrace == second.stackTrace;
   }
 
   @override

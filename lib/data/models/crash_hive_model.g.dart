@@ -17,6 +17,7 @@ class CrashHiveModelAdapter extends TypeAdapter<CrashHiveModel> {
       for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
     };
     return CrashHiveModel(
+      id: fields[9] as dynamic,
       projectKey: fields[0] as String,
       platform: fields[1] as String,
       language: fields[2] as String,
@@ -34,7 +35,9 @@ class CrashHiveModelAdapter extends TypeAdapter<CrashHiveModel> {
   @override
   void write(BinaryWriter writer, CrashHiveModel obj) {
     writer
+      ..writeByte(10)
       ..writeByte(9)
+      ..write(obj.id)
       ..writeByte(0)
       ..write(obj.projectKey)
       ..writeByte(1)
