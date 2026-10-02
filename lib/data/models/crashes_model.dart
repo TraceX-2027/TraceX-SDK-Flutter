@@ -7,12 +7,13 @@ class CrashesModel extends Crash {
     required super.projectKey,
     required super.platform,
     required super.language,
-    required super.timestamp,
+    required super.occurredAt,
     required super.exceptionType,
     required super.errorMessage,
     required super.stackTrace,
     required super.environment,
     required super.breadcrumbs,
+    super.id,
   });
 
   Map<String, dynamic> toJson() {
@@ -20,7 +21,7 @@ class CrashesModel extends Crash {
       'project_key': projectKey,
       'platform': platform,
       'language': language,
-      'timestamp': timestamp.toUtc().toIso8601String(),
+      'occurred_at': occurredAt.toUtc().toIso8601String(),
       'exception_type': exceptionType,
       'error_message': errorMessage,
       'stack_trace': stackTrace,

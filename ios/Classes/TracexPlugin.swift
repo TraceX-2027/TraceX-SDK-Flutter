@@ -33,9 +33,7 @@ public class TracexPlugin: NSObject, FlutterPlugin {
         case "getMemoryInfo":
             result(Self.getMemoryInfo())
 
-        case "getBatteryLevel":
-            result(Self.getBatteryLevel())
-
+       
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -114,20 +112,6 @@ public class TracexPlugin: NSObject, FlutterPlugin {
         return freeMemory
     }
 
-    // MARK: - Battery
 
-    private static func getBatteryLevel() -> Int {
-
-        UIDevice.current.isBatteryMonitoringEnabled = true
-
-        let batteryLevel =
-            UIDevice.current.batteryLevel
-
-        // Simulator / unavailable
-        if batteryLevel < 0 {
-            return -1
-        }
-
-        return Int(batteryLevel * 100)
-    }
+  
 }

@@ -5,7 +5,6 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-
 import 'package:tracex/domain/entities/environment.dart';
 
 class EnvironmentCollector {
@@ -15,10 +14,6 @@ class EnvironmentCollector {
   final Battery _battery;
 
   PackageInfo? _packageInfo;
-
-  int freeRamMb = 0;
-  int totalRamMb = 0;
-  bool isLowMemory = false;
 
   String _osName = 'Unknown';
   String _osVersion = 'Unknown';
@@ -47,13 +42,12 @@ class EnvironmentCollector {
       _packageInfo = await PackageInfo.fromPlatform();
     } catch (e) {
       debugPrint('TraceX: Failed to collect app info: $e');
-
       _packageInfo = null;
     }
   }
 
   // ----------------------------------------------------------
-  // Device Info
+  // Device Info (Static info collected once at startup)
   // ----------------------------------------------------------
 
   Future<void> _collectDeviceInfo() async {
@@ -68,11 +62,7 @@ class EnvironmentCollector {
         _osName = 'Web';
         _osVersion = info.userAgent ?? 'Unknown';
         _deviceModel = info.browserName.name;
-
-        // Browser cannot reliably determine
-        // whether the device is physical.
         _isPhysicalDevice = false;
-
         return;
       }
 
@@ -82,19 +72,11 @@ class EnvironmentCollector {
 
       if (defaultTargetPlatform == TargetPlatform.android) {
         final info = await _deviceInfo.androidInfo;
-        final memory = await _getMemoryInfo();
-
-        totalRamMb = (memory['totalRamMb'] as num?)?.toInt() ?? 0;
-
-        freeRamMb = (memory['freeRamMb'] as num?)?.toInt() ?? 0;
-
-        isLowMemory = memory['isLowMemory'] as bool? ?? false;
 
         _osName = 'Android';
         _osVersion = info.version.release;
         _deviceModel = info.model;
         _isPhysicalDevice = info.isPhysicalDevice;
-
         return;
       }
 
@@ -104,19 +86,11 @@ class EnvironmentCollector {
 
       if (defaultTargetPlatform == TargetPlatform.iOS) {
         final info = await _deviceInfo.iosInfo;
-        final memory = await _getMemoryInfo();
-
-        totalRamMb = (memory['totalRamMb'] as num?)?.toInt() ?? 0;
-
-        freeRamMb = (memory['freeRamMb'] as num?)?.toInt() ?? 0;
-
-        isLowMemory = memory['isLowMemory'] as bool? ?? false;
 
         _osName = 'iOS';
         _osVersion = info.systemVersion;
         _deviceModel = info.utsname.machine;
         _isPhysicalDevice = info.isPhysicalDevice;
-
         return;
       }
 
@@ -138,17 +112,9 @@ class EnvironmentCollector {
   // ----------------------------------------------------------
 
   Future<Map<String, dynamic>> _getMemoryInfo() async {
-    // --------------------------------------------------------
-    // Web
-    // --------------------------------------------------------
-
     if (kIsWeb) {
       return {'totalRamMb': 0, 'freeRamMb': 0, 'isLowMemory': false};
     }
-
-    // --------------------------------------------------------
-    // Android & iOS
-    // --------------------------------------------------------
 
     if (defaultTargetPlatform == TargetPlatform.android ||
         defaultTargetPlatform == TargetPlatform.iOS) {
@@ -159,69 +125,62 @@ class EnvironmentCollector {
 
         return {
           'totalRamMb': (result?['totalRamMb'] as num?)?.toInt() ?? 0,
-
           'freeRamMb': (result?['freeRamMb'] as num?)?.toInt() ?? 0,
-
           'isLowMemory': result?['isLowMemory'] as bool? ?? false,
         };
       } on PlatformException catch (e) {
-        debugPrint(
-          'TraceX: Memory channel error '
-          '${e.code}: ${e.message}',
-        );
+        debugPrint('TraceX: Memory channel error ${e.code}: ${e.message}');
       } catch (e) {
         debugPrint('TraceX: Failed to get memory info: $e');
       }
     }
 
-    // --------------------------------------------------------
-    // Fallback
-    // --------------------------------------------------------
-
     return {'totalRamMb': 0, 'freeRamMb': 0, 'isLowMemory': false};
   }
 
   // ----------------------------------------------------------
-  // Collect Environment
+  // Collect Environment (Real-time dynamic data on crash)
+  // ----------------------------------------------------------
+
+  // ----------------------------------------------------------
+  // Collect Environment (Real-time dynamic data on crash)
   // ----------------------------------------------------------
 
   Future<Environment> collect() async {
-    // --------------------------------------------------------
-    // Battery
-    // --------------------------------------------------------
+    final results = await Future.wait([
+      _getSafeBatteryLevel(),
+      _getMemoryInfo(),
+    ]);
 
-    int batteryLevel = -1;
+    final batteryLevel = results[0] as int;
+    final memory = results[1] as Map<String, dynamic>;
 
-    try {
-      batteryLevel = await _battery.batteryLevel;
-    } catch (e) {
-      debugPrint('TraceX: Failed to get battery level: $e');
-    }
-
-    // --------------------------------------------------------
-    // Environment
-    // --------------------------------------------------------
+    final totalRamMb = (memory['totalRamMb'] as num?)?.toInt() ?? 0;
+    final freeRamMb = (memory['freeRamMb'] as num?)?.toInt() ?? 0;
+    final isLowMemory = memory['isLowMemory'] as bool? ?? false;
 
     return Environment(
       appVersion: _packageInfo == null
           ? 'Unknown'
-          : '${_packageInfo!.version}+'
-                '${_packageInfo!.buildNumber}',
-
+          : '${_packageInfo!.version}+${_packageInfo!.buildNumber}',
       runtimeVersion: kIsWeb ? 'Dart Web' : 'Dart ${Platform.version}',
-
       osName: _osName,
       osVersion: _osVersion,
       deviceModel: _deviceModel,
-
       isPhysicalDevice: _isPhysicalDevice,
-
       freeRamMb: freeRamMb,
       totalRamMb: totalRamMb,
-
       batteryLevel: batteryLevel,
-
       isLowMemory: isLowMemory,
     );
+  }
+
+  Future<int> _getSafeBatteryLevel() async {
+    try {
+      return await _battery.batteryLevel;
+    } catch (e) {
+      debugPrint('TraceX: Failed to get battery level: $e');
+      return -1;
+    }
   }
 }
