@@ -15,6 +15,7 @@ class CrashQueue {
 
   bool _isProcessing = false;
   bool _telemetryPaused = false;
+  bool _isUnauthorized = false;
   final int _maxSize = 20;
   final int _maxRetries = 3;
   Timer? _offlineRetryTimer;
@@ -23,10 +24,24 @@ class CrashQueue {
 
   int get length => _queue.length;
 
+  @visibleForTesting
+  bool get isUnauthorized => _isUnauthorized;
+
+  @visibleForTesting
+  bool get isTelemetryPaused => _telemetryPaused;
+
+  @visibleForTesting
+  bool get isProcessing => _isProcessing;
+
   // -----------------------------------------
   // Add Crash
   // -----------------------------------------
   Future<void> add(Crash crash) async {
+    if (_isUnauthorized) {
+      debugPrint('TraceX: API key is unauthorized. Crash discarded.');
+      return;
+    }
+
     if (_telemetryPaused) {
       if (offlineBuffer) await _saveOffline(crash);
       return;
@@ -44,7 +59,7 @@ class CrashQueue {
   // Process Queue
   // -----------------------------------------
   Future<void> process(Future<void> Function(Crash crash) sendCrash) async {
-    if (_telemetryPaused || _isProcessing) return;
+    if (_telemetryPaused || _isProcessing || _isUnauthorized) return;
 
     _isProcessing = true;
 
@@ -53,14 +68,24 @@ class CrashQueue {
         await _processOfflineCrashes(sendCrash);
       }
 
+      if (_isUnauthorized) {
+        _queue.clear();
+        return;
+      }
+
       if (_telemetryPaused) {
         await _flushQueueToOffline();
         return;
       }
 
-      while (_queue.isNotEmpty && !_telemetryPaused) {
+      while (_queue.isNotEmpty && !_telemetryPaused && !_isUnauthorized) {
         final crash = _queue.removeFirst();
         await _send(crash, sendCrash);
+
+        if (_isUnauthorized) {
+          _queue.clear();
+          break;
+        }
 
         if (_telemetryPaused) {
           await _flushQueueToOffline();
@@ -69,7 +94,7 @@ class CrashQueue {
       }
     } finally {
       _isProcessing = false;
-      if (_queue.isNotEmpty && !_telemetryPaused) {
+      if (_queue.isNotEmpty && !_telemetryPaused && !_isUnauthorized) {
         unawaited(process(sendCrash));
       }
     }
@@ -90,11 +115,15 @@ class CrashQueue {
       } catch (e) {
         debugPrint('TraceX: Send attempt $attempt/$_maxRetries failed: $e');
 
-        // 401 Unauthorized -> Pause telemetry and discard payload immediately (Do NOT save offline)
+        // 401 Unauthorized -> Pause telemetry permanently, discard payload and clear queue (Do NOT save offline)
         if (e is DioException && e.response?.statusCode == 401) {
+          _isUnauthorized = true;
           _telemetryPaused = true;
+          _queue.clear();
 
-          debugPrint('[TraceX] Invalid API Key. Telemetry paused.');
+          debugPrint(
+            '[TraceX] Invalid API Key. Telemetry permanently paused and queue cleared.',
+          );
           if (fromOffline) await crashOffline.deleteCrash(crash);
           return false;
         }
@@ -138,11 +167,11 @@ class CrashQueue {
   Future<void> _processOfflineCrashes(
     Future<void> Function(Crash crash) sendCrash,
   ) async {
-    if (_telemetryPaused || !offlineBuffer) return;
+    if (_telemetryPaused || _isUnauthorized || !offlineBuffer) return;
 
     final cachedCrashes = crashOffline.getCachedCrashes();
     for (final crash in cachedCrashes) {
-      if (_telemetryPaused) break;
+      if (_telemetryPaused || _isUnauthorized) break;
       final success = await _send(crash, sendCrash, fromOffline: true);
       if (success) {
         await crashOffline.deleteCrash(crash);
@@ -151,7 +180,7 @@ class CrashQueue {
   }
 
   Future<void> _flushQueueToOffline() async {
-    if (!offlineBuffer) {
+    if (_isUnauthorized || !offlineBuffer) {
       _queue.clear();
       return;
     }
@@ -183,8 +212,13 @@ class CrashQueue {
     if (!offlineBuffer) return;
     _offlineRetryTimer?.cancel();
     _offlineRetryTimer = Timer.periodic(const Duration(minutes: 1), (_) async {
-      if (!_telemetryPaused && !_isProcessing) {
-        await _processOfflineCrashes(sendCrash);
+      if (!_telemetryPaused && !_isUnauthorized && !_isProcessing) {
+        _isProcessing = true;
+        try {
+          await _processOfflineCrashes(sendCrash);
+        } finally {
+          _isProcessing = false;
+        }
       }
     });
   }
@@ -201,5 +235,8 @@ class CrashQueue {
     _offlineRetryTimer?.cancel();
     _offlineRetryTimer = null;
     _queue.clear();
+    _isProcessing = false;
+    _telemetryPaused = false;
+    _isUnauthorized = false;
   }
 }

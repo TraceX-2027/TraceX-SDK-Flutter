@@ -16,13 +16,28 @@ class TraceX {
   TraceX._();
 
   static const String defaultEndpoint =
-      'https://tracex-api.kareemadel.com/api/v1';
+      'https://tracex-api.kareemadel.com/api/v1/';
 
   static const String _platform = 'flutter';
   static const String _language = 'dart';
 
   static String? _projectKey;
   static bool _enableLogging = false;
+
+  /// Alias for [initialize] to adhere to standard Flutter SDK naming conventions
+  static Future<void> init({
+    required String projectKey,
+    String? endpoint,
+    bool enableLogging = false,
+    bool offlineBuffer = true,
+    bool captureBreadcrumbs = true,
+  }) => initialize(
+    projectKey: projectKey,
+    endpoint: endpoint,
+    enableLogging: enableLogging,
+    offlineBuffer: offlineBuffer,
+    captureBreadcrumbs: captureBreadcrumbs,
+  );
 
   static SendCrashDetails? _sendCrashDetails;
   static GetEnvironmentDetails? _getEnvironmentDetails;
@@ -40,6 +55,15 @@ class TraceX {
 
   static bool _offlineBuffer = true;
   static bool _captureBreadcrumbs = true;
+
+  @visibleForTesting
+  static bool get isInitialized => _initialized;
+
+  @visibleForTesting
+  static String? get projectKey => _projectKey;
+
+  @visibleForTesting
+  static CrashQueue? get crashQueue => _crashQueue;
 
   static FlutterExceptionHandler? _previousFlutterErrorHandler;
   static bool Function(Object error, StackTrace stack)?
@@ -135,13 +159,7 @@ class TraceX {
       _previousFlutterErrorHandler = FlutterError.onError;
 
       FlutterError.onError = (FlutterErrorDetails details) {
-        scheduleMicrotask(() {
-          _captureException(
-            details.exception,
-            details.stack ?? StackTrace.current,
-          );
-        });
-
+        recordFlutterError(details);
         _previousFlutterErrorHandler?.call(details);
       };
 
@@ -191,6 +209,64 @@ class TraceX {
     } finally {
       _initializing = false;
     }
+  }
+
+  /// Records a Flutter framework error directly.
+  /// Can be assigned to [FlutterError.onError].
+  static void recordFlutterError(FlutterErrorDetails details) {
+    scheduleMicrotask(() {
+      _captureException(
+        details.exception,
+        details.stack ?? StackTrace.current,
+      );
+    });
+  }
+
+  /// Manually records a caught error or exception.
+  static void recordError(
+    dynamic error,
+    StackTrace? stack, {
+    String? reason,
+    bool fatal = false,
+  }) {
+    final effectiveError = (reason != null && reason.isNotEmpty)
+        ? '$error (Reason: $reason)'
+        : error;
+    scheduleMicrotask(() {
+      _captureException(
+        effectiveError as Object,
+        stack ?? StackTrace.current,
+      );
+    });
+  }
+
+  /// Runs the app callback within a guarded zone to capture all unhandled asynchronous errors.
+  static void runGuarded(void Function() appRunner) {
+    runZonedGuarded(appRunner, (error, stack) {
+      scheduleMicrotask(() {
+        _captureException(error, stack);
+      });
+    });
+  }
+
+  /// Resets TraceX state and dependencies. Intended for testing purposes.
+  @visibleForTesting
+  static Future<void> reset() async {
+    await ServicesLocator.reset();
+    _initialized = false;
+    _initializing = false;
+    _projectKey = null;
+    _enableLogging = false;
+    _crashHistory.clear();
+    _crashQueue?.dispose();
+    _crashQueue = null;
+    _rateLimiter = null;
+    _sendCrashDetails = null;
+    _getEnvironmentDetails = null;
+    _getBreadcrumbDetails = null;
+    _crashOffline = null;
+    FlutterError.onError = _previousFlutterErrorHandler;
+    PlatformDispatcher.instance.onError = _previousPlatformErrorHandler;
   }
 
   // -----------------------------------------

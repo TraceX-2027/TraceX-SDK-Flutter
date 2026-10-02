@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:isolate'; // 👈 استيراد مكتبة الـ Isolate
+import 'dart:isolate';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -17,16 +17,26 @@ class CrashRemoteDatasource extends BaseCrashRemoteDatasource {
 
   @override
   Future<void> sendCrashDetails(CrashesModel crash) async {
-    final preparedPayload = await Isolate.run(() {
+    final Map<String, dynamic> preparedPayload;
+
+    if (kIsWeb) {
       final jsonStr = jsonEncode(crash.toJson());
-      final bytes = utf8.encode(jsonStr);
+      preparedPayload = {'data': jsonStr, 'isGzip': false};
+    } else {
+      preparedPayload = await Isolate.run(() {
+        final jsonStr = jsonEncode(crash.toJson());
+        final bytes = utf8.encode(jsonStr);
 
-      if (bytes.length > 5 * 1024) {
-        return {'data': gzip.encode(bytes), 'isGzip': true};
-      }
+        if (bytes.length > 5 * 1024) {
+          return {
+            'data': Uint8List.fromList(gzip.encode(bytes)),
+            'isGzip': true,
+          };
+        }
 
-      return {'data': jsonStr, 'isGzip': false};
-    });
+        return {'data': jsonStr, 'isGzip': false};
+      });
+    }
 
     final isGzip = preparedPayload['isGzip'] as bool;
     final payloadData = preparedPayload['data'];
@@ -41,13 +51,7 @@ class CrashRemoteDatasource extends BaseCrashRemoteDatasource {
           'User-Agent': 'TraceX-Flutter-SDK/1.0.0',
         },
       ),
-      data: isGzip
-          ? Stream.fromIterable([payloadData as List<int>])
-          : payloadData,
+      data: payloadData,
     );
-
-    debugPrint(crash.toJson().toString());
-    debugPrint(crash.environment.freeRamMb.toString());
-    debugPrint(crash.environment.totalRamMb.toString());
   }
 }

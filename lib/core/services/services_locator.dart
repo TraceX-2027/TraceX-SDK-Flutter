@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:get_it/get_it.dart';
 import 'package:tracex/core/utils/api_const.dart';
 import 'package:tracex/data/collectors/breadcrumb_collector.dart';
@@ -41,16 +42,25 @@ class ServicesLocator {
 
   static bool _initialized = false;
 
+  @visibleForTesting
+  static Dio get dio => _dio;
+
+  @visibleForTesting
+  static bool get isInitialized => _initialized;
+
   static Future<void> init({String? endpoint}) async {
     if (_initialized) {
       return;
     }
 
     try {
-      // تعيين الرابط الممرر أو استخدام رابط الإنتاج الافتراضي من ApiConst
-      _dio.options.baseUrl = (endpoint != null && endpoint.trim().isNotEmpty)
+      var targetUrl = (endpoint != null && endpoint.trim().isNotEmpty)
           ? endpoint.trim()
           : ApiConst.baseUrl;
+      if (!targetUrl.endsWith('/')) {
+        targetUrl = '$targetUrl/';
+      }
+      _dio.options.baseUrl = targetUrl;
 
       _registerCrash();
 

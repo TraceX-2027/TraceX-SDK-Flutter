@@ -10,6 +10,7 @@ abstract class BaseCrashOfflineDatasource {
 
 class CrashOfflineDatasource extends BaseCrashOfflineDatasource {
   static const String boxName = 'tracex_crashes';
+  static const int maxOfflineCrashes = 100;
   late Box<CrashHiveModel> _box;
 
   Future<void> init() async {
@@ -22,6 +23,10 @@ class CrashOfflineDatasource extends BaseCrashOfflineDatasource {
 
   @override
   Future<void> saveCrash(CrashHiveModel crash) async {
+    while (_box.length >= maxOfflineCrashes && _box.isNotEmpty) {
+      final oldestKey = _box.keys.first;
+      await _box.delete(oldestKey);
+    }
     await _box.add(crash);
   }
 
