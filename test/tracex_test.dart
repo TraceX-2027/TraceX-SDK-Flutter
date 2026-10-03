@@ -4,6 +4,7 @@ import 'package:tracex/core/services/crash_queue.dart';
 import 'package:tracex/core/services/crash_rate_limiter.dart';
 import 'package:tracex/core/utils/api_const.dart';
 import 'package:tracex/data/datasources/crash_offline_datasource.dart';
+import 'package:tracex/data/datasources/crash_remote_datasource.dart';
 import 'package:tracex/data/models/crashes_model.dart';
 import 'package:tracex/domain/entities/breadcrumb.dart';
 import 'package:tracex/domain/entities/crash.dart';
@@ -149,24 +150,42 @@ void main() {
   });
 
   group('T1.17: URL Resolution & Endpoint Invariants', () {
-    test('ApiConst.baseUrl must end with a trailing slash', () {
+    test('ApiConst.baseUrl defaults to Cloudflare Edge Ingestion endpoint', () {
       expect(ApiConst.baseUrl.endsWith('/'), isTrue);
       expect(
         ApiConst.baseUrl,
+        equals(ApiConst.edgeBaseUrl),
+      );
+      expect(
+        ApiConst.edgeBaseUrl,
+        equals(
+          'https://tracex-edge-ingest.kareemadel10110.workers.dev/api/v1/',
+        ),
+      );
+      expect(
+        ApiConst.originBaseUrl,
         equals('https://tracex-api.kareemadel.com/api/v1/'),
       );
       expect(
         ApiConst.crashUrl,
+        equals(
+          'https://tracex-edge-ingest.kareemadel10110.workers.dev/api/v1/crashes',
+        ),
+      );
+      expect(
+        ApiConst.originCrashUrl,
         equals('https://tracex-api.kareemadel.com/api/v1/crashes'),
       );
     });
 
-    test('Dio relative resolution to "crashes" resolves accurately', () {
+    test('Dio relative resolution to "crashes" resolves to Edge Ingest', () {
       final baseUri = Uri.parse(ApiConst.baseUrl);
       final resolvedUri = baseUri.resolve('crashes');
       expect(
         resolvedUri.toString(),
-        equals('https://tracex-api.kareemadel.com/api/v1/crashes'),
+        equals(
+          'https://tracex-edge-ingest.kareemadel10110.workers.dev/api/v1/crashes',
+        ),
       );
     });
 
@@ -185,7 +204,13 @@ void main() {
         );
       },
     );
+
+    test('TraceX.defaultEndpoint points to Cloudflare Edge Ingestion', () {
+      expect(TraceX.defaultEndpoint, equals(ApiConst.edgeBaseUrl));
+      expect(TraceX.originEndpoint, equals(ApiConst.originBaseUrl));
+    });
   });
+
 
   group('T1.17: CrashQueue Resilience & 401 Discard Policy', () {
     test(
@@ -282,5 +307,134 @@ void main() {
       // Verify recordError can be called safely without crashing even when uninitialized
       TraceX.recordError(Exception('test exception'), StackTrace.current);
     });
+
+    test('TraceX rejects initialization when projectKey and apiKey are empty', () async {
+      expect(
+        () => TraceX.initialize(projectKey: ''),
+        throwsA(isA<ArgumentError>()),
+      );
+      expect(
+        () => TraceX.initialize(apiKey: '   '),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+  });
+
+  group('T1.17: Edge Ingestion with Smart Origin Fallback', () {
+    test('CrashRemoteDatasource falls back to origin on edge network failure and sets sticky fallback', () async {
+      final dio = Dio();
+      final attemptedUrls = <String>[];
+
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            attemptedUrls.add(options.uri.toString());
+            if (options.uri.toString().contains('workers.dev')) {
+              handler.reject(
+                DioException(
+                  requestOptions: options,
+                  type: DioExceptionType.connectionTimeout,
+                  error: 'Edge unreachable from ISP',
+                ),
+              );
+            } else {
+              handler.resolve(
+                Response(
+                  requestOptions: options,
+                  statusCode: 202,
+                  data: {'event_id': 'test-event-origin-123'},
+                ),
+              );
+            }
+          },
+        ),
+      );
+
+      dio.options.baseUrl = ApiConst.edgeBaseUrl;
+      final ds = CrashRemoteDatasource(
+        dio: dio,
+        fallbackUrl: ApiConst.originCrashUrl,
+      );
+
+      final crash = _createDummyCrash();
+      final model = CrashesModel(
+        projectKey: crash.projectKey,
+        platform: crash.platform,
+        language: crash.language,
+        occurredAt: crash.occurredAt,
+        exceptionType: crash.exceptionType,
+        errorMessage: crash.errorMessage,
+        stackTrace: crash.stackTrace,
+        environment: crash.environment,
+        breadcrumbs: crash.breadcrumbs,
+      );
+
+      // First crash: attempts edge, fails, falls back to origin
+      await ds.sendCrashDetails(model);
+
+      expect(attemptedUrls.length, equals(2));
+      expect(attemptedUrls[0], contains('workers.dev'));
+      expect(attemptedUrls[1], equals(ApiConst.originCrashUrl));
+      expect(ds.isPreferringFallback, isTrue);
+
+      // Second crash: sticky fallback sends straight to origin without edge timeout
+      attemptedUrls.clear();
+      await ds.sendCrashDetails(model);
+      expect(attemptedUrls.length, equals(1));
+      expect(attemptedUrls[0], equals(ApiConst.originCrashUrl));
+    });
+
+    test('CrashRemoteDatasource does NOT fall back on 401 Unauthorized or 400 Bad Request', () async {
+      final dio = Dio();
+      final attemptedUrls = <String>[];
+
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            attemptedUrls.add(options.uri.toString());
+            handler.reject(
+              DioException(
+                requestOptions: options,
+                response: Response(
+                  requestOptions: options,
+                  statusCode: 401,
+                  statusMessage: 'Unauthorized',
+                ),
+              ),
+            );
+          },
+        ),
+      );
+
+      dio.options.baseUrl = ApiConst.edgeBaseUrl;
+      final ds = CrashRemoteDatasource(
+        dio: dio,
+        fallbackUrl: ApiConst.originCrashUrl,
+      );
+
+      final crash = _createDummyCrash();
+      final model = CrashesModel(
+        projectKey: crash.projectKey,
+        platform: crash.platform,
+        language: crash.language,
+        occurredAt: crash.occurredAt,
+        exceptionType: crash.exceptionType,
+        errorMessage: crash.errorMessage,
+        stackTrace: crash.stackTrace,
+        environment: crash.environment,
+        breadcrumbs: crash.breadcrumbs,
+      );
+
+      await expectLater(
+        () => ds.sendCrashDetails(model),
+        throwsA(isA<DioException>()),
+      );
+      // Must NOT attempt origin fallback on 401!
+      expect(attemptedUrls.length, equals(1));
+      expect(attemptedUrls[0], contains('workers.dev'));
+      expect(ds.isPreferringFallback, isFalse);
+    });
+
   });
 }
+

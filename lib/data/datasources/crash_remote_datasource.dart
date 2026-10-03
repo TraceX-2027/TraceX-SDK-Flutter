@@ -12,8 +12,19 @@ abstract class BaseCrashRemoteDatasource {
 
 class CrashRemoteDatasource extends BaseCrashRemoteDatasource {
   final Dio dio;
+  final String? fallbackUrl;
+  bool _preferFallback = false;
 
-  CrashRemoteDatasource({required this.dio});
+  CrashRemoteDatasource({
+    required this.dio,
+    this.fallbackUrl,
+  });
+
+  @visibleForTesting
+  bool get isPreferringFallback => _preferFallback;
+
+  @visibleForTesting
+  set preferFallbackForTesting(bool value) => _preferFallback = value;
 
   @override
   Future<void> sendCrashDetails(CrashesModel crash) async {
@@ -41,17 +52,58 @@ class CrashRemoteDatasource extends BaseCrashRemoteDatasource {
     final isGzip = preparedPayload['isGzip'] as bool;
     final payloadData = preparedPayload['data'];
 
-    await dio.post(
-      'crashes',
-      options: Options(
-        headers: {
-          'X-TraceX-Key': crash.projectKey,
-          'Content-Type': 'application/json',
-          if (isGzip) 'Content-Encoding': 'gzip',
-          'User-Agent': 'TraceX-Flutter-SDK/1.0.0',
-        },
-      ),
-      data: payloadData,
-    );
+    final headers = {
+      'X-TraceX-Key': crash.projectKey,
+      'Content-Type': 'application/json',
+      if (isGzip) 'Content-Encoding': 'gzip',
+      'User-Agent': 'TraceX-Flutter-SDK/1.0.0',
+    };
+
+    if (_preferFallback && fallbackUrl != null) {
+      await dio.post(
+        fallbackUrl!,
+        options: Options(headers: headers),
+        data: payloadData,
+      );
+      return;
+    }
+
+    try {
+      await dio.post(
+        'crashes',
+        options: Options(
+          headers: headers,
+          sendTimeout: fallbackUrl != null ? const Duration(seconds: 3) : null,
+          receiveTimeout: fallbackUrl != null ? const Duration(seconds: 3) : null,
+        ),
+        data: payloadData,
+      );
+    } catch (e) {
+      if (fallbackUrl != null && _isEligibleForFallback(e)) {
+        _preferFallback = true;
+        debugPrint(
+          '[TraceX] Primary edge dispatch failed ($e). Falling back to origin: $fallbackUrl',
+        );
+        await dio.post(
+          fallbackUrl!,
+          options: Options(headers: headers),
+          data: payloadData,
+        );
+        return;
+      }
+      rethrow;
+    }
+  }
+
+  bool _isEligibleForFallback(Object e) {
+    if (e is DioException) {
+      final statusCode = e.response?.statusCode;
+      if (statusCode != null && statusCode >= 400 && statusCode < 500) {
+        return false;
+      }
+      return true;
+    }
+    return true;
   }
 }
+

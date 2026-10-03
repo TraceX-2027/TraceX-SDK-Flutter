@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:tracex/core/services/crash_queue.dart';
 import 'package:tracex/core/services/crash_rate_limiter.dart';
 import 'package:tracex/core/services/services_locator.dart';
+import 'package:tracex/core/utils/api_const.dart';
 import 'package:tracex/domain/entities/breadcrumb.dart';
 import 'package:tracex/domain/entities/crash.dart';
 import 'package:tracex/domain/usecases/get_breadcrumb_details.dart';
@@ -15,8 +16,8 @@ import 'package:tracex/domain/usecases/send_crash_details.dart';
 class TraceX {
   TraceX._();
 
-  static const String defaultEndpoint =
-      'https://tracex-api.kareemadel.com/api/v1/';
+  static const String defaultEndpoint = ApiConst.edgeBaseUrl;
+  static const String originEndpoint = ApiConst.originBaseUrl;
 
   static const String _platform = 'flutter';
   static const String _language = 'dart';
@@ -26,14 +27,18 @@ class TraceX {
 
   /// Alias for [initialize] to adhere to standard Flutter SDK naming conventions
   static Future<void> init({
-    required String projectKey,
+    String? projectKey,
+    String? apiKey,
     String? endpoint,
+    String? fallbackEndpoint,
     bool enableLogging = false,
     bool offlineBuffer = true,
     bool captureBreadcrumbs = true,
   }) => initialize(
     projectKey: projectKey,
+    apiKey: apiKey,
     endpoint: endpoint,
+    fallbackEndpoint: fallbackEndpoint,
     enableLogging: enableLogging,
     offlineBuffer: offlineBuffer,
     captureBreadcrumbs: captureBreadcrumbs,
@@ -80,8 +85,10 @@ class TraceX {
   // -----------------------------------------
 
   static Future<void> initialize({
-    required String projectKey,
+    String? projectKey,
+    String? apiKey,
     String? endpoint,
+    String? fallbackEndpoint,
     bool enableLogging = false,
     bool offlineBuffer = true,
     bool captureBreadcrumbs = true,
@@ -90,14 +97,20 @@ class TraceX {
       return;
     }
 
-    if (projectKey.trim().isEmpty) {
-      throw ArgumentError('TraceX projectKey cannot be empty.');
+    final effectiveKey = (projectKey != null && projectKey.trim().isNotEmpty)
+        ? projectKey.trim()
+        : (apiKey != null && apiKey.trim().isNotEmpty)
+            ? apiKey.trim()
+            : null;
+
+    if (effectiveKey == null) {
+      throw ArgumentError('TraceX projectKey (or apiKey) cannot be empty.');
     }
 
     _initializing = true;
 
     try {
-      _projectKey = projectKey;
+      _projectKey = effectiveKey;
       _enableLogging = enableLogging;
       _offlineBuffer = offlineBuffer;
       _captureBreadcrumbs = captureBreadcrumbs;
@@ -109,10 +122,13 @@ class TraceX {
       WidgetsFlutterBinding.ensureInitialized();
 
       // -----------------------------------------
-      // Initialize Services with Target Endpoint
+      // Initialize Services with Target Endpoint & Fallback
       // -----------------------------------------
 
-      await ServicesLocator.init(endpoint: targetEndpoint);
+      await ServicesLocator.init(
+        endpoint: targetEndpoint,
+        fallbackEndpoint: fallbackEndpoint,
+      );
 
       // -----------------------------------------
       // Get Dependencies From GetIt
