@@ -62,7 +62,12 @@ class CrashRemoteDatasource extends BaseCrashRemoteDatasource {
     if (_preferFallback && fallbackUrl != null) {
       await dio.post(
         fallbackUrl!,
-        options: Options(headers: headers),
+        options: Options(
+          headers: headers,
+          connectTimeout: const Duration(seconds: 5),
+          sendTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 5),
+        ),
         data: payloadData,
       );
       return;
@@ -73,6 +78,7 @@ class CrashRemoteDatasource extends BaseCrashRemoteDatasource {
         'crashes',
         options: Options(
           headers: headers,
+          connectTimeout: fallbackUrl != null ? const Duration(milliseconds: 1500) : null,
           sendTimeout: fallbackUrl != null ? const Duration(seconds: 3) : null,
           receiveTimeout: fallbackUrl != null ? const Duration(seconds: 3) : null,
         ),
@@ -86,7 +92,12 @@ class CrashRemoteDatasource extends BaseCrashRemoteDatasource {
         );
         await dio.post(
           fallbackUrl!,
-          options: Options(headers: headers),
+          options: Options(
+            headers: headers,
+            connectTimeout: const Duration(seconds: 5),
+            sendTimeout: const Duration(seconds: 5),
+            receiveTimeout: const Duration(seconds: 5),
+          ),
           data: payloadData,
         );
         return;

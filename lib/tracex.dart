@@ -61,14 +61,17 @@ class TraceX {
   static bool _offlineBuffer = true;
   static bool _captureBreadcrumbs = true;
 
-  @visibleForTesting
   static bool get isInitialized => _initialized;
 
-  @visibleForTesting
   static String? get projectKey => _projectKey;
+
+  static int get queueLength => _crashQueue?.length ?? 0;
 
   @visibleForTesting
   static CrashQueue? get crashQueue => _crashQueue;
+
+  /// Optional listener for diagnostic events and lifecycle logs
+  static void Function(String message)? onDiagnosticLog;
 
   static FlutterExceptionHandler? _previousFlutterErrorHandler;
   static bool Function(Object error, StackTrace stack)?
@@ -78,6 +81,9 @@ class TraceX {
     if (_enableLogging) {
       debugPrint(message);
     }
+    try {
+      onDiagnosticLog?.call(message);
+    } catch (_) {}
   }
 
   // -----------------------------------------
@@ -392,7 +398,9 @@ class TraceX {
       // -----------------------------------------
 
       await crashQueue.process(sendCrashDetails.execute);
+      _log('TraceX: Processed queue for $exceptionType');
     } catch (e, stack) {
+      _log('TraceX: Failed to capture crash: $e');
       debugPrint('TraceX: Failed to capture crash: $e');
       debugPrint('TraceX: $stack');
     }
