@@ -48,7 +48,10 @@ class ServicesLocator {
   @visibleForTesting
   static bool get isInitialized => _initialized;
 
-  static Future<void> init({String? endpoint}) async {
+  static Future<void> init({
+    String? endpoint,
+    String? fallbackEndpoint,
+  }) async {
     if (_initialized) {
       return;
     }
@@ -62,7 +65,15 @@ class ServicesLocator {
       }
       _dio.options.baseUrl = targetUrl;
 
-      _registerCrash();
+      // Enable origin fallback if target is the default edge worker endpoint
+      final isEdgeTarget = endpoint == null ||
+          targetUrl == ApiConst.edgeBaseUrl ||
+          targetUrl.contains('workers.dev');
+      final fallback = isEdgeTarget
+          ? (fallbackEndpoint ?? ApiConst.originCrashUrl)
+          : null;
+
+      _registerCrash(fallbackUrl: fallback);
 
       await _registerOfflineCrash();
 
@@ -78,9 +89,9 @@ class ServicesLocator {
     }
   }
 
-  static void _registerCrash() {
+  static void _registerCrash({String? fallbackUrl}) {
     sl.registerLazySingleton<BaseCrashRemoteDatasource>(
-      () => CrashRemoteDatasource(dio: _dio),
+      () => CrashRemoteDatasource(dio: _dio, fallbackUrl: fallbackUrl),
     );
 
     sl.registerLazySingleton<BaseCrashRepository>(
@@ -91,6 +102,7 @@ class ServicesLocator {
       () => SendCrashDetails(baseCrashRepository: sl()),
     );
   }
+
 
   static Future<void> _registerOfflineCrash() async {
     final CrashOfflineDatasource crashOfflineDatasource =
