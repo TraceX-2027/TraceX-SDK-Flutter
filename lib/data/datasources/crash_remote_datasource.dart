@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:isolate'; // 👈 استيراد مكتبة الـ Isolate
+import 'dart:isolate';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -12,42 +12,109 @@ abstract class BaseCrashRemoteDatasource {
 
 class CrashRemoteDatasource extends BaseCrashRemoteDatasource {
   final Dio dio;
+  final String? fallbackUrl;
+  bool _preferFallback = false;
 
-  CrashRemoteDatasource({required this.dio});
+  CrashRemoteDatasource({
+    required this.dio,
+    this.fallbackUrl,
+  });
+
+  @visibleForTesting
+  bool get isPreferringFallback => _preferFallback;
+
+  @visibleForTesting
+  set preferFallbackForTesting(bool value) => _preferFallback = value;
 
   @override
   Future<void> sendCrashDetails(CrashesModel crash) async {
-    final preparedPayload = await Isolate.run(() {
+    final Map<String, dynamic> preparedPayload;
+
+    if (kIsWeb) {
       final jsonStr = jsonEncode(crash.toJson());
-      final bytes = utf8.encode(jsonStr);
+      preparedPayload = {'data': jsonStr, 'isGzip': false};
+    } else {
+      preparedPayload = await Isolate.run(() {
+        final jsonStr = jsonEncode(crash.toJson());
+        final bytes = utf8.encode(jsonStr);
 
-      if (bytes.length > 5 * 1024) {
-        return {'data': gzip.encode(bytes), 'isGzip': true};
-      }
+        if (bytes.length > 5 * 1024) {
+          return {
+            'data': Uint8List.fromList(gzip.encode(bytes)),
+            'isGzip': true,
+          };
+        }
 
-      return {'data': jsonStr, 'isGzip': false};
-    });
+        return {'data': jsonStr, 'isGzip': false};
+      });
+    }
 
     final isGzip = preparedPayload['isGzip'] as bool;
     final payloadData = preparedPayload['data'];
 
-    await dio.post(
-      'crashes',
-      options: Options(
-        headers: {
-          'X-TraceX-Key': crash.projectKey,
-          'Content-Type': 'application/json',
-          if (isGzip) 'Content-Encoding': 'gzip',
-          'User-Agent': 'TraceX-Flutter-SDK/1.0.0',
-        },
-      ),
-      data: isGzip
-          ? Stream.fromIterable([payloadData as List<int>])
-          : payloadData,
-    );
+    final headers = {
+      'X-TraceX-Key': crash.projectKey,
+      'Content-Type': 'application/json',
+      if (isGzip) 'Content-Encoding': 'gzip',
+      'User-Agent': 'TraceX-Flutter-SDK/1.0.0',
+    };
 
-    debugPrint(crash.toJson().toString());
-    debugPrint(crash.environment.freeRamMb.toString());
-    debugPrint(crash.environment.totalRamMb.toString());
+    if (_preferFallback && fallbackUrl != null) {
+      await dio.post(
+        fallbackUrl!,
+        options: Options(
+          headers: headers,
+          connectTimeout: const Duration(seconds: 5),
+          sendTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 5),
+        ),
+        data: payloadData,
+      );
+      return;
+    }
+
+    try {
+      await dio.post(
+        'crashes',
+        options: Options(
+          headers: headers,
+          connectTimeout: fallbackUrl != null ? const Duration(milliseconds: 1500) : null,
+          sendTimeout: fallbackUrl != null ? const Duration(seconds: 3) : null,
+          receiveTimeout: fallbackUrl != null ? const Duration(seconds: 3) : null,
+        ),
+        data: payloadData,
+      );
+    } catch (e) {
+      if (fallbackUrl != null && _isEligibleForFallback(e)) {
+        _preferFallback = true;
+        debugPrint(
+          '[TraceX] Primary edge dispatch failed ($e). Falling back to origin: $fallbackUrl',
+        );
+        await dio.post(
+          fallbackUrl!,
+          options: Options(
+            headers: headers,
+            connectTimeout: const Duration(seconds: 5),
+            sendTimeout: const Duration(seconds: 5),
+            receiveTimeout: const Duration(seconds: 5),
+          ),
+          data: payloadData,
+        );
+        return;
+      }
+      rethrow;
+    }
+  }
+
+  bool _isEligibleForFallback(Object e) {
+    if (e is DioException) {
+      final statusCode = e.response?.statusCode;
+      if (statusCode != null && statusCode >= 400 && statusCode < 500) {
+        return false;
+      }
+      return true;
+    }
+    return true;
   }
 }
+
