@@ -6,8 +6,7 @@ class BreadcrumbCollector {
   static final Queue<BreadcrumbModel> _buffer = Queue<BreadcrumbModel>();
   static int _sequenceOrder = 0;
 
-  List<BreadcrumbModel> get breadcrumbs =>
-      List.unmodifiable(_buffer.toList());
+  List<BreadcrumbModel> get breadcrumbs => List.unmodifiable(_buffer.toList());
 
   static void addBreadcrumb({
     required String category,
@@ -28,9 +27,22 @@ class BreadcrumbCollector {
         category: category,
         action: action,
         target: target,
-        data: Map.unmodifiable(Map<String, dynamic>.from(data)),
+        // M2 Fix: sanitize data values so jsonEncode never throws
+        data: Map.unmodifiable(_sanitizeData(data)),
       ),
     );
+  }
+
+  /// Sanitizes map values to JSON-safe primitives (String, num, bool).
+  /// Complex objects are converted via [toString] to prevent
+  /// [JsonUnsupportedObjectError] during crash serialization. (M2 Fix)
+  static Map<String, dynamic> _sanitizeData(Map<String, dynamic> raw) {
+    return raw.map((key, value) {
+      if (value == null || value is String || value is num || value is bool) {
+        return MapEntry(key, value);
+      }
+      return MapEntry(key, value.toString());
+    });
   }
 
   static int get count => _buffer.length;

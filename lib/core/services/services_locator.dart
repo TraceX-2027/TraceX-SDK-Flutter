@@ -48,10 +48,7 @@ class ServicesLocator {
   @visibleForTesting
   static bool get isInitialized => _initialized;
 
-  static Future<void> init({
-    String? endpoint,
-    String? fallbackEndpoint,
-  }) async {
+  static Future<void> init({String? endpoint, String? fallbackEndpoint}) async {
     if (_initialized) {
       return;
     }
@@ -66,7 +63,8 @@ class ServicesLocator {
       _dio.options.baseUrl = targetUrl;
 
       // Enable origin fallback if target is the default edge worker endpoint
-      final isEdgeTarget = endpoint == null ||
+      final isEdgeTarget =
+          endpoint == null ||
           targetUrl == ApiConst.edgeBaseUrl ||
           targetUrl.contains('workers.dev');
       final fallback = isEdgeTarget
@@ -102,7 +100,6 @@ class ServicesLocator {
       () => SendCrashDetails(baseCrashRepository: sl()),
     );
   }
-
 
   static Future<void> _registerOfflineCrash() async {
     final CrashOfflineDatasource crashOfflineDatasource =

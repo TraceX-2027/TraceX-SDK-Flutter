@@ -29,14 +29,19 @@ class TraceXNavigatorObserver extends NavigatorObserver {
   }
 
   void _logRoute(String action, Route route) {
-    final routeName = route.settings.name ?? route.runtimeType.toString();
-    final arguments = route.settings.arguments;
+    try {
+      final routeName = route.settings.name ?? route.runtimeType.toString();
+      final arguments = route.settings.arguments;
 
-    BreadcrumbCollector.addBreadcrumb(
-      category: 'navigation.route',
-      action: action,
-      target: routeName,
-      data: {if (arguments != null) 'arguments': arguments.toString()},
-    );
+      // N1 Fix: category is 'navigation' (not 'navigation.route') per API spec §3.1
+      BreadcrumbCollector.addBreadcrumb(
+        category: 'navigation',
+        action: action,
+        target: routeName,
+        data: {if (arguments != null) 'arguments': arguments.toString()},
+      );
+    } catch (_) {
+      // M3 Fix: telemetry collection must never disrupt application flow
+    }
   }
 }

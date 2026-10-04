@@ -13,6 +13,12 @@ import 'package:tracex/domain/usecases/get_breadcrumb_details.dart';
 import 'package:tracex/domain/usecases/get_environment_details.dart';
 import 'package:tracex/domain/usecases/save_offline_crash.dart';
 import 'package:tracex/domain/usecases/send_crash_details.dart';
+// Public API exports - breadcrumb collectors and entities (B1 Fix)
+export 'data/collectors/breadcrumb_collector.dart';
+export 'data/collectors/breadcrumbs/breadcrumb_navigator_observer.dart';
+export 'data/collectors/breadcrumbs/tracex_dio_interceptor.dart';
+export 'data/collectors/breadcrumbs/tracex_user_interaction.dart';
+export 'domain/entities/breadcrumb.dart';
 
 class TraceX {
   TraceX._();
