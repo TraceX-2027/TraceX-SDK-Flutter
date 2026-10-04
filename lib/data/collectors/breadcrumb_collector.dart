@@ -1,11 +1,13 @@
+import 'dart:collection';
 import 'package:tracex/data/models/breadcrumb_model.dart';
 
 class BreadcrumbCollector {
-  static final List<BreadcrumbModel> _breadcrumbs = [];
+  static const int maxCapacity = 50;
+  static final Queue<BreadcrumbModel> _buffer = Queue<BreadcrumbModel>();
   static int _sequenceOrder = 0;
 
   List<BreadcrumbModel> get breadcrumbs =>
-      List.unmodifiable(List<BreadcrumbModel>.from(_breadcrumbs));
+      List.unmodifiable(_buffer.toList());
 
   static void addBreadcrumb({
     required String category,
@@ -15,7 +17,11 @@ class BreadcrumbCollector {
   }) {
     _sequenceOrder++;
 
-    _breadcrumbs.add(
+    if (_buffer.length >= maxCapacity) {
+      _buffer.removeFirst();
+    }
+
+    _buffer.addLast(
       BreadcrumbModel(
         sequenceOrder: _sequenceOrder,
         timestamp: DateTime.now().toUtc(),
@@ -25,14 +31,12 @@ class BreadcrumbCollector {
         data: Map.unmodifiable(Map<String, dynamic>.from(data)),
       ),
     );
-
-    if (_breadcrumbs.length > 50) {
-      _breadcrumbs.removeAt(0);
-    }
   }
 
+  static int get count => _buffer.length;
+
   static void clear() {
-    _breadcrumbs.clear();
+    _buffer.clear();
     _sequenceOrder = 0;
   }
 }

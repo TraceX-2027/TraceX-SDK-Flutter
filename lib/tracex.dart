@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:tracex/core/services/crash_queue.dart';
 import 'package:tracex/core/services/crash_rate_limiter.dart';
 import 'package:tracex/core/services/services_locator.dart';
+import 'package:tracex/data/collectors/breadcrumb_collector.dart';
 import 'package:tracex/domain/entities/breadcrumb.dart';
 import 'package:tracex/domain/entities/crash.dart';
 import 'package:tracex/domain/usecases/get_breadcrumb_details.dart';
@@ -193,6 +194,19 @@ class TraceX {
     }
   }
 
+  static void recordBreadcrumb({
+    required String category,
+    required String action,
+    required String target,
+    Map<String, dynamic> data = const {},
+  }) {
+    BreadcrumbCollector.addBreadcrumb(
+      category: category,
+      action: action,
+      target: target,
+      data: data,
+    );
+  }
   // -----------------------------------------
   // Capture Exception
   // -----------------------------------------
