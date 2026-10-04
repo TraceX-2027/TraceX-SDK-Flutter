@@ -14,6 +14,9 @@ import 'package:tracex/domain/usecases/get_environment_details.dart';
 import 'package:tracex/domain/usecases/save_offline_crash.dart';
 import 'package:tracex/domain/usecases/send_crash_details.dart';
 
+export 'package:tracex/data/collectors/breadcrumbs/breadcrumb_navigator_observer.dart';
+export 'package:tracex/data/collectors/breadcrumbs/tracex_dio_interceptor.dart';
+
 class TraceX {
   TraceX._();
 
