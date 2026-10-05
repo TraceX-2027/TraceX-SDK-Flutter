@@ -15,10 +15,7 @@ class CrashRemoteDatasource extends BaseCrashRemoteDatasource {
   final String? fallbackUrl;
   bool _preferFallback = false;
 
-  CrashRemoteDatasource({
-    required this.dio,
-    this.fallbackUrl,
-  });
+  CrashRemoteDatasource({required this.dio, this.fallbackUrl});
 
   @visibleForTesting
   bool get isPreferringFallback => _preferFallback;
@@ -78,9 +75,13 @@ class CrashRemoteDatasource extends BaseCrashRemoteDatasource {
         'crashes',
         options: Options(
           headers: headers,
-          connectTimeout: fallbackUrl != null ? const Duration(milliseconds: 1500) : null,
+          connectTimeout: fallbackUrl != null
+              ? const Duration(milliseconds: 1500)
+              : null,
           sendTimeout: fallbackUrl != null ? const Duration(seconds: 3) : null,
-          receiveTimeout: fallbackUrl != null ? const Duration(seconds: 3) : null,
+          receiveTimeout: fallbackUrl != null
+              ? const Duration(seconds: 3)
+              : null,
         ),
         data: payloadData,
       );
@@ -117,4 +118,3 @@ class CrashRemoteDatasource extends BaseCrashRemoteDatasource {
     return true;
   }
 }
-

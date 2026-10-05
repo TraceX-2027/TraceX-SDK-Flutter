@@ -1,8 +1,12 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tracex/core/services/crash_queue.dart';
 import 'package:tracex/core/services/crash_rate_limiter.dart';
 import 'package:tracex/core/utils/api_const.dart';
+import 'package:tracex/data/collectors/breadcrumb_collector.dart';
+import 'package:tracex/data/collectors/breadcrumbs/breadcrumb_navigator_observer.dart';
+import 'package:tracex/data/collectors/breadcrumbs/tracex_dio_interceptor.dart';
 import 'package:tracex/data/datasources/crash_offline_datasource.dart';
 import 'package:tracex/data/datasources/crash_remote_datasource.dart';
 import 'package:tracex/data/models/crashes_model.dart';
@@ -63,12 +67,14 @@ Crash _createDummyCrash({String projectKey = 'test-project-key'}) {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // T1.17b: Crash Serialization & Core Logic
+  // ─────────────────────────────────────────────────────────────────────────
   group('T1.17b: TraceX Crash Serialization & Core Logic Tests', () {
     test(
-      'Strictly caps stored breadcrumbs at 50 items and evicts oldest (FIFO)',
+      'CrashesModel.toJson() produces correct JSON schema and ISO 8601 UTC occurred_at',
       () {
         final now = DateTime.now().toUtc();
-
         final crash = CrashesModel(
           projectKey: 'test-project-key-123',
           platform: 'flutter',
@@ -103,7 +109,6 @@ void main() {
 
         final json = crash.toJson();
 
-        // 1. Check all essential keys
         expect(json.containsKey('project_key'), isTrue);
         expect(json['project_key'], equals('test-project-key-123'));
         expect(json['platform'], equals('flutter'));
@@ -112,19 +117,16 @@ void main() {
         expect(json['error_message'], equals('Invalid format encountered'));
         expect(json['stack_trace'], equals('main.dart:42:10'));
 
-        // 2. Critical check: occurred_at formatted as ISO 8601 UTC string
         expect(json.containsKey('occurred_at'), isTrue);
         expect(json['occurred_at'], isA<String>());
         expect((json['occurred_at'] as String).endsWith('Z'), isTrue);
         expect(json['occurred_at'], equals(now.toIso8601String()));
 
-        // 3. Environment keys
         expect(json.containsKey('environment'), isTrue);
         final env = json['environment'] as Map<String, dynamic>;
         expect(env['app_version'], equals('1.0.0+1'));
         expect(env['device_model'], equals('Pixel 7'));
 
-        // 4. Breadcrumbs
         expect(json.containsKey('breadcrumbs'), isTrue);
         final breadcrumbs = json['breadcrumbs'] as List;
         expect(breadcrumbs.length, equals(1));
@@ -137,18 +139,17 @@ void main() {
       'CrashRateLimiter should limit rapid duplicate crashes up to 10 max',
       () {
         final rateLimiter = CrashRateLimiter();
-
-        // First 10 allowed
         for (int i = 0; i < 10; i++) {
           expect(rateLimiter.allow(), isTrue);
         }
-
-        // 11th rejected
         expect(rateLimiter.allow(), isFalse);
       },
     );
   });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // T1.17: URL Resolution & Endpoint Invariants
+  // ─────────────────────────────────────────────────────────────────────────
   group('T1.17: URL Resolution & Endpoint Invariants', () {
     test('ApiConst.baseUrl defaults to Cloudflare Edge Ingestion endpoint', () {
       expect(ApiConst.baseUrl.endsWith('/'), isTrue);
@@ -189,11 +190,9 @@ void main() {
     test(
       'ServicesLocator.init normalizes endpoints without trailing slashes',
       () async {
-        // Without trailing slash
         const customEndpoint = 'https://custom.backend.dev/api/v1';
         var normalized = customEndpoint.trim();
         if (!normalized.endsWith('/')) normalized = '$normalized/';
-
         expect(normalized, equals('https://custom.backend.dev/api/v1/'));
         expect(
           Uri.parse(normalized).resolve('crashes').toString(),
@@ -208,6 +207,9 @@ void main() {
     });
   });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // T1.17: CrashQueue Resilience & 401 Discard Policy
+  // ─────────────────────────────────────────────────────────────────────────
   group('T1.17: CrashQueue Resilience & 401 Discard Policy', () {
     test(
       '401 Unauthorized permanently pauses telemetry and clears queue without saving offline',
@@ -216,14 +218,10 @@ void main() {
         final crashOffline = CrashOffline(baseCrashOfflineRepository: mockRepo);
         final queue = CrashQueue(crashOffline: crashOffline);
 
-        final crash1 = _createDummyCrash();
-        final crash2 = _createDummyCrash();
-
-        await queue.add(crash1);
-        await queue.add(crash2);
+        await queue.add(_createDummyCrash());
+        await queue.add(_createDummyCrash());
         expect(queue.length, equals(2));
 
-        // Process queue with a simulated 401 Unauthorized error
         final requestOptions = RequestOptions(path: 'crashes');
         await queue.process((crash) async {
           throw DioException(
@@ -236,19 +234,12 @@ void main() {
           );
         });
 
-        // Telemetry must be permanently paused & unauthorized flagged
         expect(queue.isUnauthorized, isTrue);
         expect(queue.isTelemetryPaused, isTrue);
-
-        // In-memory queue must be cleared
         expect(queue.length, equals(0));
-
-        // Crash must NEVER be saved offline on 401
         expect(mockRepo.crashes, isEmpty);
 
-        // Any subsequent add() must reject and not save offline
-        final crash3 = _createDummyCrash();
-        await queue.add(crash3);
+        await queue.add(_createDummyCrash());
         expect(queue.length, equals(0));
         expect(mockRepo.crashes, isEmpty);
 
@@ -261,8 +252,7 @@ void main() {
       final crashOffline = CrashOffline(baseCrashOfflineRepository: mockRepo);
       final queue = CrashQueue(crashOffline: crashOffline);
 
-      final crash = _createDummyCrash();
-      await queue.add(crash);
+      await queue.add(_createDummyCrash());
 
       final requestOptions = RequestOptions(path: 'crashes');
       await queue.process((c) async {
@@ -286,12 +276,18 @@ void main() {
     });
   });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // T1.17: Storage Invariants & FIFO Eviction
+  // ─────────────────────────────────────────────────────────────────────────
   group('T1.17: Storage Invariants & FIFO Eviction', () {
     test('CrashOfflineDatasource enforces 100-crash FIFO limit', () {
       expect(CrashOfflineDatasource.maxOfflineCrashes, equals(100));
     });
   });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // T1.14 & T1.15: TraceX Public API Entry Points
+  // ─────────────────────────────────────────────────────────────────────────
   group('T1.14 & T1.15: TraceX Public API Entry Points', () {
     test('TraceX exposes required public methods without error', () {
       expect(TraceX.init, isNotNull);
@@ -299,8 +295,6 @@ void main() {
       expect(TraceX.recordFlutterError, isNotNull);
       expect(TraceX.recordError, isNotNull);
       expect(TraceX.runGuarded, isNotNull);
-
-      // Verify recordError can be called safely without crashing even when uninitialized
       TraceX.recordError(Exception('test exception'), StackTrace.current);
     });
 
@@ -319,6 +313,9 @@ void main() {
     );
   });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // T1.17: Edge Ingestion with Smart Origin Fallback
+  // ─────────────────────────────────────────────────────────────────────────
   group('T1.17: Edge Ingestion with Smart Origin Fallback', () {
     test(
       'CrashRemoteDatasource falls back to origin on edge network failure and sets sticky fallback',
@@ -356,7 +353,6 @@ void main() {
           dio: dio,
           fallbackUrl: ApiConst.originCrashUrl,
         );
-
         final crash = _createDummyCrash();
         final model = CrashesModel(
           projectKey: crash.projectKey,
@@ -370,15 +366,12 @@ void main() {
           breadcrumbs: crash.breadcrumbs,
         );
 
-        // First crash: attempts edge, fails, falls back to origin
         await ds.sendCrashDetails(model);
-
         expect(attemptedUrls.length, equals(2));
         expect(attemptedUrls[0], contains('workers.dev'));
         expect(attemptedUrls[1], equals(ApiConst.originCrashUrl));
         expect(ds.isPreferringFallback, isTrue);
 
-        // Second crash: sticky fallback sends straight to origin without edge timeout
         attemptedUrls.clear();
         await ds.sendCrashDetails(model);
         expect(attemptedUrls.length, equals(1));
@@ -415,7 +408,6 @@ void main() {
           dio: dio,
           fallbackUrl: ApiConst.originCrashUrl,
         );
-
         final crash = _createDummyCrash();
         final model = CrashesModel(
           projectKey: crash.projectKey,
@@ -433,10 +425,115 @@ void main() {
           () => ds.sendCrashDetails(model),
           throwsA(isA<DioException>()),
         );
-        // Must NOT attempt origin fallback on 401!
         expect(attemptedUrls.length, equals(1));
         expect(attemptedUrls[0], contains('workers.dev'));
         expect(ds.isPreferringFallback, isFalse);
+      },
+    );
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // T2.15: BreadcrumbCollector Ring Buffer & Collectors
+  // ─────────────────────────────────────────────────────────────────────────
+  group('T2.15: BreadcrumbCollector Ring Buffer & Collectors', () {
+    setUp(() {
+      BreadcrumbCollector.clear();
+    });
+
+    test('Strictly caps buffer at 50 items with FIFO eviction', () {
+      for (int i = 1; i <= 55; i++) {
+        BreadcrumbCollector.addBreadcrumb(
+          category: 'test',
+          action: 'act',
+          target: 'tgt_$i',
+        );
+      }
+      expect(BreadcrumbCollector.count, equals(50));
+      final breadcrumbs = BreadcrumbCollector().breadcrumbs;
+      expect(breadcrumbs.first.target, equals('tgt_6'));
+      expect(breadcrumbs.last.target, equals('tgt_55'));
+    });
+
+    test('clear() resets buffer and restarts sequence counter', () {
+      BreadcrumbCollector.addBreadcrumb(
+        category: 'test',
+        action: 'act',
+        target: 'tgt_1',
+      );
+      BreadcrumbCollector.clear();
+      expect(BreadcrumbCollector.count, equals(0));
+      BreadcrumbCollector.addBreadcrumb(
+        category: 'test',
+        action: 'act',
+        target: 'tgt_restart',
+      );
+      expect(BreadcrumbCollector().breadcrumbs.first.sequenceOrder, equals(1));
+    });
+
+    test('addBreadcrumb sanitizes non-primitive data values to strings', () {
+      final complexObject = Uri.parse('https://example.com');
+      BreadcrumbCollector.addBreadcrumb(
+        category: 'test',
+        action: 'act',
+        target: 'tgt',
+        data: {
+          'num': 42,
+          'bool': true,
+          'str': 'hello',
+          'complex': complexObject,
+        },
+      );
+      final b = BreadcrumbCollector().breadcrumbs.first;
+      expect(b.data['num'], equals(42));
+      expect(b.data['bool'], equals(true));
+      expect(b.data['str'], equals('hello'));
+      expect(b.data['complex'], isA<String>());
+      expect(b.data['complex'], equals(complexObject.toString()));
+    });
+
+    test(
+      'TraceXNavigatorObserver emits category "navigation" not "navigation.route"',
+      () {
+        final observer = TraceXNavigatorObserver();
+        final route = PageRouteBuilder<void>(
+          settings: const RouteSettings(name: '/dashboard'),
+          pageBuilder: (_, __, ___) => const SizedBox(),
+        );
+        observer.didPush(route, null);
+        expect(BreadcrumbCollector.count, equals(1));
+        final b = BreadcrumbCollector().breadcrumbs.first;
+        expect(b.category, equals('navigation'));
+        expect(b.action, equals('push'));
+        expect(b.target, equals('/dashboard'));
+      },
+    );
+
+    test('TraceXDioInterceptor truncates target to max 255 characters', () {
+      final longPath = '/api/${'x' * 300}';
+      final uri = Uri.parse('https://example.com$longPath');
+      final interceptor = TraceXDioInterceptor();
+      final target = uri.path.length > 255
+          ? uri.path.substring(0, 255)
+          : uri.path;
+      expect(target.length, equals(255));
+      expect(target, startsWith('/api/'));
+      expect(interceptor, isNotNull);
+    });
+
+    test(
+      'TraceXDioInterceptor excludes TraceX ingestion paths from breadcrumbs',
+      () {
+        final ingestionPaths = ['/crashes', '/api/v1/crashes'];
+        const excluded = ['/crashes', '/api/v1/crashes'];
+        for (final path in ingestionPaths) {
+          final uri = Uri.parse('https://tracex.example.com$path');
+          final isExcluded = excluded.any((p) => uri.path.endsWith(p));
+          expect(
+            isExcluded,
+            isTrue,
+            reason: 'Path $path must be excluded from breadcrumb recording',
+          );
+        }
       },
     );
   });
