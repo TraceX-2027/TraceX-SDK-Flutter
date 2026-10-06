@@ -13,6 +13,7 @@ import 'package:tracex/domain/usecases/get_breadcrumb_details.dart';
 import 'package:tracex/domain/usecases/get_environment_details.dart';
 import 'package:tracex/domain/usecases/save_offline_crash.dart';
 import 'package:tracex/domain/usecases/send_crash_details.dart';
+import 'package:tracex/src/data_scrubber.dart';
 // Public API exports - breadcrumb collectors and entities (B1 Fix)
 export 'data/collectors/breadcrumb_collector.dart';
 export 'data/collectors/breadcrumbs/breadcrumb_navigator_observer.dart';
@@ -387,14 +388,17 @@ class TraceX {
       // 6. Build Crash (Standardized occurredAt)
       // -----------------------------------------
 
+      final scrubbedErrorMessage = DataScrubber.scrubString(errorMessage);
+      final scrubbedStackTrace = DataScrubber.scrubString(stackTraceStr);
+
       final crash = Crash(
         projectKey: _projectKey!,
         platform: _platform,
         language: _language,
         occurredAt: occurredAt,
         exceptionType: exceptionType,
-        errorMessage: errorMessage,
-        stackTrace: stackTraceStr,
+        errorMessage: scrubbedErrorMessage,
+        stackTrace: scrubbedStackTrace,
         environment: environment,
         breadcrumbs: breadcrumbs,
       );

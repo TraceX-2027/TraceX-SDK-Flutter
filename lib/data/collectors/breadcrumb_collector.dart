@@ -1,5 +1,6 @@
 import 'dart:collection';
 import 'package:tracex/data/models/breadcrumb_model.dart';
+import 'package:tracex/src/data_scrubber.dart';
 
 class BreadcrumbCollector {
   static const int maxCapacity = 50;
@@ -26,23 +27,23 @@ class BreadcrumbCollector {
         timestamp: DateTime.now().toUtc(),
         category: category,
         action: action,
-        target: target,
-        // M2 Fix: sanitize data values so jsonEncode never throws
+        target: DataScrubber.scrubString(target),
+        // M2 Fix & Data Scrubber: Sanitize and scrub sensitive dictionary keys/values
         data: Map.unmodifiable(_sanitizeData(data)),
       ),
     );
   }
 
-  /// Sanitizes map values to JSON-safe primitives (String, num, bool).
-  /// Complex objects are converted via [toString] to prevent
-  /// [JsonUnsupportedObjectError] during crash serialization. (M2 Fix)
+  /// Sanitizes map values to JSON-safe primitives and scrubs sensitive data.
   static Map<String, dynamic> _sanitizeData(Map<String, dynamic> raw) {
-    return raw.map((key, value) {
+    final primitiveMap = raw.map((key, value) {
       if (value == null || value is String || value is num || value is bool) {
         return MapEntry(key, value);
       }
       return MapEntry(key, value.toString());
     });
+
+    return DataScrubber.scrubMap(primitiveMap);
   }
 
   static int get count => _buffer.length;
