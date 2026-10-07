@@ -1,3 +1,5 @@
+/// Data scrubber for redacting sensitive credentials, payment details,
+/// and local user directory paths before telemetry serialization and transit.
 class DataScrubber {
   DataScrubber._();
 
@@ -7,20 +9,21 @@ class DataScrubber {
     caseSensitive: false,
   );
 
-  // 2. Sensitive Keys Regex (password, secret, token, api_key, auth, etc.)
-  static final RegExp _sensitiveKeyRegex = RegExp(
-    r'(password|secret|token|api_?key|auth|credit_?card|access_?token)',
+  // N1: Sensitive URL Query Parameters Regex
+  static final RegExp _urlQueryParamRegex = RegExp(
+    r'([?&](?:password|token|api_?key|secret|auth)=)[^&\s]+',
     caseSensitive: false,
   );
 
-  // 3. File System Absolute Paths Regex (Windows and Unix/macOS user paths)
-  // e.g. C:\Users\Username\... or /Users/username/... or /home/username/...
-  static final RegExp _windowsUserPathRegex = RegExp(
-    r'[a-zA-Z]:\\Users\\[^\\]+',
+  // M1: Sensitive Keys Regex with Word Boundaries
+  static final RegExp _sensitiveKeyRegex = RegExp(
+    r'(^|_|\b)(password|secret|token|api_?key|auth|credit_?card|access_?token|cvv|cvc|pin|private_?key|secret_?key|ssn)(_|$|\b)',
     caseSensitive: false,
   );
-  static final RegExp _unixUserPathRegex = RegExp(
-    r'/(Users|home)/[^/]+',
+
+  // N2: File System Absolute Paths Regex (supports \ and / on Windows, Unix, and Mobile Sandboxes)
+  static final RegExp _filePathRegex = RegExp(
+    r'([a-zA-Z]:[/\\]Users[/\\][^/\\]+|/(Users|home|data/user/\d+|data/data|var/mobile(?:/Containers/Data/Application)?)/[^/\s]+)',
     caseSensitive: false,
   );
 
@@ -29,21 +32,29 @@ class DataScrubber {
     r'\b(?:\d[ -]*?){13,19}\b',
   );
 
-  /// Redacts sensitive patterns in a string (bearer tokens, credit cards, user paths).
+  // N3: Pre-compiled regex for stripping non-digit characters
+  static final RegExp _nonDigitsRegex = RegExp(r'\D');
+
+  /// Redacts sensitive patterns in a string (bearer tokens, credit cards, user paths, query params).
   static String scrubString(String text) {
     if (text.isEmpty) return text;
 
     // 1. Redact Bearer tokens
     var scrubbed = text.replaceAll(_bearerRegex, 'Bearer [REDACTED]');
 
-    // 2. Redact file system user directories
-    scrubbed = scrubbed.replaceAll(_windowsUserPathRegex, '[PATH_REDACTED]');
-    scrubbed = scrubbed.replaceAll(_unixUserPathRegex, '[PATH_REDACTED]');
+    // N1. Redact Sensitive URL Query Parameters
+    scrubbed = scrubbed.replaceAllMapped(_urlQueryParamRegex, (match) {
+      return '${match.group(1)}[REDACTED]';
+    });
+
+    // N2. Redact file system user directories and mobile sandboxes
+    scrubbed = scrubbed.replaceAll(_filePathRegex, '[PATH_REDACTED]');
 
     // 3. Redact Credit Cards using Luhn algorithm
     scrubbed = scrubbed.replaceAllMapped(_creditCardCandidateRegex, (match) {
       final raw = match.group(0)!;
-      final digitsOnly = raw.replaceAll(RegExp(r'[^0-9]'), '');
+      // N3: Uses pre-compiled regex
+      final digitsOnly = raw.replaceAll(_nonDigitsRegex, '');
       if (digitsOnly.length >= 13 &&
           digitsOnly.length <= 19 &&
           _isValidLuhn(digitsOnly)) {
@@ -56,32 +67,33 @@ class DataScrubber {
   }
 
   /// Sanitizes key-value maps recursively, masking sensitive keys and scrubbing values.
-  static Map<String, dynamic> scrubMap(Map<String, dynamic> map) {
+  static Map<String, dynamic> scrubMap(Map<dynamic, dynamic> map) {
     return map.map((key, value) {
-      if (_sensitiveKeyRegex.hasMatch(key)) {
-        return MapEntry(key, '[REDACTED]');
+      final stringKey = key.toString();
+
+      if (_sensitiveKeyRegex.hasMatch(stringKey)) {
+        return MapEntry(stringKey, '[REDACTED]');
       }
 
-      if (value is Map<String, dynamic>) {
-        return MapEntry(key, scrubMap(value));
-      } else if (value is Map) {
-        final converted = Map<String, dynamic>.from(value);
-        return MapEntry(key, scrubMap(converted));
+      if (value is Map) {
+        // M3: Safe handling of Maps with non-string keys
+        final stringKeyed = value.map((k, v) => MapEntry(k.toString(), v));
+        return MapEntry(stringKey, scrubMap(stringKeyed));
       } else if (value is List) {
-        return MapEntry(key, _scrubList(value));
+        return MapEntry(stringKey, _scrubList(value));
       } else if (value is String) {
-        return MapEntry(key, scrubString(value));
+        return MapEntry(stringKey, scrubString(value));
       }
-      return MapEntry(key, value);
+      return MapEntry(stringKey, value);
     });
   }
 
   static List<dynamic> _scrubList(List<dynamic> list) {
     return list.map((item) {
-      if (item is Map<String, dynamic>) {
-        return scrubMap(item);
-      } else if (item is Map) {
-        return scrubMap(Map<String, dynamic>.from(item));
+      if (item is Map) {
+        // M3: Safe conversion for nested list items
+        final stringKeyed = item.map((k, v) => MapEntry(k.toString(), v));
+        return scrubMap(stringKeyed);
       } else if (item is List) {
         return _scrubList(item);
       } else if (item is String) {

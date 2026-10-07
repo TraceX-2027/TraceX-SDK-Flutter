@@ -324,6 +324,10 @@ class TraceX {
     final stackTraceStr = stackTrace.toString();
     final occurredAt = DateTime.now().toUtc();
 
+    // M2: Scrub error message and stack trace BEFORE deduplication and building Crash
+    final scrubbedErrorMessage = DataScrubber.scrubString(errorMessage);
+    final scrubbedStackTrace = DataScrubber.scrubString(stackTraceStr);
+
     try {
       // -----------------------------------------
       // 1. Deduplication (خوارزمية منع التكرار بالبصمة)
@@ -331,8 +335,8 @@ class TraceX {
 
       if (_isDuplicate(
         exceptionType: exceptionType,
-        errorMessage: errorMessage,
-        stackTrace: stackTraceStr,
+        errorMessage: scrubbedErrorMessage,
+        stackTrace: scrubbedStackTrace,
         timestamp: occurredAt,
       )) {
         _log('TraceX: Duplicate crash ignored.');
@@ -387,9 +391,6 @@ class TraceX {
       // -----------------------------------------
       // 6. Build Crash (Standardized occurredAt)
       // -----------------------------------------
-
-      final scrubbedErrorMessage = DataScrubber.scrubString(errorMessage);
-      final scrubbedStackTrace = DataScrubber.scrubString(stackTraceStr);
 
       final crash = Crash(
         projectKey: _projectKey!,

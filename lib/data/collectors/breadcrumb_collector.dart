@@ -28,22 +28,37 @@ class BreadcrumbCollector {
         category: category,
         action: action,
         target: DataScrubber.scrubString(target),
-        // M2 Fix & Data Scrubber: Sanitize and scrub sensitive dictionary keys/values
+        // B1: Scrub sensitive dictionary keys/values first, then sanitize primitives
         data: Map.unmodifiable(_sanitizeData(data)),
       ),
     );
   }
 
-  /// Sanitizes map values to JSON-safe primitives and scrubs sensitive data.
+  /// B1: Pass raw map directly to DataScrubber first, then sanitize leaf values to JSON-safe primitives
   static Map<String, dynamic> _sanitizeData(Map<String, dynamic> raw) {
-    final primitiveMap = raw.map((key, value) {
+    final scrubbedMap = DataScrubber.scrubMap(raw);
+    return _primitiveSanitize(scrubbedMap);
+  }
+
+  static Map<String, dynamic> _primitiveSanitize(Map<String, dynamic> map) {
+    return map.map((key, value) {
       if (value == null || value is String || value is num || value is bool) {
         return MapEntry(key, value);
+      } else if (value is Map<String, dynamic>) {
+        return MapEntry(key, _primitiveSanitize(value));
+      } else if (value is List) {
+        return MapEntry(
+          key,
+          value.map((v) {
+            if (v is Map<String, dynamic>) {
+              return _primitiveSanitize(v);
+            }
+            return (v is num || v is bool || v == null) ? v : v.toString();
+          }).toList(),
+        );
       }
       return MapEntry(key, value.toString());
     });
-
-    return DataScrubber.scrubMap(primitiveMap);
   }
 
   static int get count => _buffer.length;
