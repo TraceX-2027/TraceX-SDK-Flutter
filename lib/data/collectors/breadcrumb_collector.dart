@@ -1,5 +1,6 @@
 import 'dart:collection';
 import 'package:tracex/data/models/breadcrumb_model.dart';
+import 'package:tracex/src/data_scrubber.dart';
 
 class BreadcrumbCollector {
   static const int maxCapacity = 50;
@@ -26,20 +27,35 @@ class BreadcrumbCollector {
         timestamp: DateTime.now().toUtc(),
         category: category,
         action: action,
-        target: target,
-        // M2 Fix: sanitize data values so jsonEncode never throws
+        target: DataScrubber.scrubString(target),
+        // B1: Scrub sensitive dictionary keys/values first, then sanitize primitives
         data: Map.unmodifiable(_sanitizeData(data)),
       ),
     );
   }
 
-  /// Sanitizes map values to JSON-safe primitives (String, num, bool).
-  /// Complex objects are converted via [toString] to prevent
-  /// [JsonUnsupportedObjectError] during crash serialization. (M2 Fix)
+  /// B1: Pass raw map directly to DataScrubber first, then sanitize leaf values to JSON-safe primitives
   static Map<String, dynamic> _sanitizeData(Map<String, dynamic> raw) {
-    return raw.map((key, value) {
+    final scrubbedMap = DataScrubber.scrubMap(raw);
+    return _primitiveSanitize(scrubbedMap);
+  }
+
+  static Map<String, dynamic> _primitiveSanitize(Map<String, dynamic> map) {
+    return map.map((key, value) {
       if (value == null || value is String || value is num || value is bool) {
         return MapEntry(key, value);
+      } else if (value is Map<String, dynamic>) {
+        return MapEntry(key, _primitiveSanitize(value));
+      } else if (value is List) {
+        return MapEntry(
+          key,
+          value.map((v) {
+            if (v is Map<String, dynamic>) {
+              return _primitiveSanitize(v);
+            }
+            return (v is num || v is bool || v == null) ? v : v.toString();
+          }).toList(),
+        );
       }
       return MapEntry(key, value.toString());
     });

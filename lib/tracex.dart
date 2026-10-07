@@ -13,12 +13,14 @@ import 'package:tracex/domain/usecases/get_breadcrumb_details.dart';
 import 'package:tracex/domain/usecases/get_environment_details.dart';
 import 'package:tracex/domain/usecases/save_offline_crash.dart';
 import 'package:tracex/domain/usecases/send_crash_details.dart';
+import 'package:tracex/src/data_scrubber.dart';
 // Public API exports - breadcrumb collectors and entities (B1 Fix)
 export 'data/collectors/breadcrumb_collector.dart';
 export 'data/collectors/breadcrumbs/breadcrumb_navigator_observer.dart';
 export 'data/collectors/breadcrumbs/tracex_dio_interceptor.dart';
 export 'data/collectors/breadcrumbs/tracex_user_interaction.dart';
 export 'domain/entities/breadcrumb.dart';
+export 'src/data_scrubber.dart';
 
 export 'package:tracex/data/collectors/breadcrumbs/breadcrumb_navigator_observer.dart';
 export 'package:tracex/data/collectors/breadcrumbs/tracex_dio_interceptor.dart';
@@ -326,6 +328,10 @@ class TraceX {
     final stackTraceStr = stackTrace.toString();
     final occurredAt = DateTime.now().toUtc();
 
+    // M2: Scrub error message and stack trace BEFORE deduplication and building Crash
+    final scrubbedErrorMessage = DataScrubber.scrubString(errorMessage);
+    final scrubbedStackTrace = DataScrubber.scrubString(stackTraceStr);
+
     try {
       // -----------------------------------------
       // 1. Deduplication (خوارزمية منع التكرار بالبصمة)
@@ -333,8 +339,8 @@ class TraceX {
 
       if (_isDuplicate(
         exceptionType: exceptionType,
-        errorMessage: errorMessage,
-        stackTrace: stackTraceStr,
+        errorMessage: scrubbedErrorMessage,
+        stackTrace: scrubbedStackTrace,
         timestamp: occurredAt,
       )) {
         _log('TraceX: Duplicate crash ignored.');
@@ -396,8 +402,8 @@ class TraceX {
         language: _language,
         occurredAt: occurredAt,
         exceptionType: exceptionType,
-        errorMessage: errorMessage,
-        stackTrace: stackTraceStr,
+        errorMessage: scrubbedErrorMessage,
+        stackTrace: scrubbedStackTrace,
         environment: environment,
         breadcrumbs: breadcrumbs,
       );

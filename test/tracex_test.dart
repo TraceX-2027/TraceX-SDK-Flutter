@@ -15,6 +15,7 @@ import 'package:tracex/domain/entities/crash.dart';
 import 'package:tracex/domain/entities/environment.dart';
 import 'package:tracex/domain/repositories/base_crash_offline_repository.dart';
 import 'package:tracex/domain/usecases/save_offline_crash.dart';
+import 'package:tracex/src/data_scrubber.dart';
 import 'package:tracex/tracex.dart';
 
 class MockCrashOfflineRepository implements BaseCrashOfflineRepository {
@@ -534,6 +535,195 @@ void main() {
             reason: 'Path $path must be excluded from breadcrumb recording',
           );
         }
+      },
+    );
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // T2.16: DataScrubber Invariants & Redaction Tests
+  // ─────────────────────────────────────────────────────────────────────────
+  group('T2.16: DataScrubber Invariants & Redaction Tests', () {
+    test('Redacts Bearer tokens in headers and error strings', () {
+      const input = 'Authorization: Bearer secretToken_12345.xyz== occurred';
+      final result = DataScrubber.scrubString(input);
+      expect(result, equals('Authorization: Bearer [REDACTED] occurred'));
+    });
+
+    test('Redacts valid 16-digit credit cards using Luhn algorithm', () {
+      const input = 'Transaction failed for card 4111111111111111';
+      final result = DataScrubber.scrubString(input);
+      expect(result, equals('Transaction failed for card [CARD_REDACTED]'));
+
+      const invalidCard = 'Order reference 1234567890123456';
+      expect(DataScrubber.scrubString(invalidCard), equals(invalidCard));
+    });
+
+    test('Redacts sensitive URL query parameters (N1)', () {
+      const url =
+          'https://api.example.com/data?token=secret123&api_key=xyz&password=pass&user=1';
+      final scrubbed = DataScrubber.scrubString(url);
+      expect(
+        scrubbed,
+        equals(
+          'https://api.example.com/data?token=[REDACTED]&api_key=[REDACTED]&password=[REDACTED]&user=1',
+        ),
+      );
+    });
+
+    test(
+      'Does not false positive redact benign words like author or authority (M1)',
+      () {
+        final data = {
+          'author': 'Shakespeare',
+          'authority': 'LocalAdmin',
+          'authentic': true,
+          'author_id': 123,
+          'password': 'secretPassword',
+          'cvv': '123',
+          'pin': '9999',
+        };
+
+        final scrubbed = DataScrubber.scrubMap(data);
+        expect(scrubbed['author'], equals('Shakespeare'));
+        expect(scrubbed['authority'], equals('LocalAdmin'));
+        expect(scrubbed['authentic'], equals(true));
+        expect(scrubbed['author_id'], equals(123));
+        expect(scrubbed['password'], equals('[REDACTED]'));
+        expect(scrubbed['cvv'], equals('[REDACTED]'));
+        expect(scrubbed['pin'], equals('[REDACTED]'));
+      },
+    );
+
+    test('Recursively scrubs nested maps and preserves nested keys (B1)', () {
+      final input = {
+        'user': {
+          'password': 'secretPassword',
+          'token': 'abc',
+          'profile': {'api_key': 'key_123'},
+        },
+      };
+
+      final scrubbed = DataScrubber.scrubMap(input);
+      expect((scrubbed['user'] as Map)['password'], equals('[REDACTED]'));
+      expect((scrubbed['user'] as Map)['token'], equals('[REDACTED]'));
+      expect(
+        ((scrubbed['user'] as Map)['profile'] as Map)['api_key'],
+        equals('[REDACTED]'),
+      );
+    });
+
+    test('Safely handles Map with non-string keys without TypeError (M3)', () {
+      final nonStringKeyMap = {
+        200: 'OK',
+        500: 'Internal Server Error',
+        'password': 'secret',
+      };
+
+      final scrubbed = DataScrubber.scrubMap(nonStringKeyMap);
+      expect(scrubbed['200'], equals('OK'));
+      expect(scrubbed['500'], equals('Internal Server Error'));
+      expect(scrubbed['password'], equals('[REDACTED]'));
+    });
+
+    test(
+      'Redacts Windows forward-slash paths and mobile sandbox directories (N2)',
+      () {
+        const winSlash = 'file:///C:/Users/JohnDoe/AppData/Local/file.dart';
+        expect(
+          DataScrubber.scrubString(winSlash),
+          equals('file:///[PATH_REDACTED]/AppData/Local/file.dart'),
+        );
+
+        const androidPath = '/data/user/0/com.app/databases/app.db';
+        expect(
+          DataScrubber.scrubString(androidPath),
+          equals('[PATH_REDACTED]/databases/app.db'),
+        );
+
+        const iosPath =
+            '/var/mobile/Containers/Data/Application/UUID-123/Documents/file.txt';
+        expect(
+          DataScrubber.scrubString(iosPath),
+          equals('[PATH_REDACTED]/Documents/file.txt'),
+        );
+      },
+    );
+
+    test('Redaction performance completes in < 1ms per event payload', () {
+      final stopwatch = Stopwatch()..start();
+      for (int i = 0; i < 100; i++) {
+        DataScrubber.scrubString(
+          'Error Bearer token123 at C:\\Users\\Dev\\app?token=123 with card 4111111111111111',
+        );
+        DataScrubber.scrubMap({
+          'password': 'pass',
+          'token': 'secret',
+          'nested': {'api_key': '123'},
+        });
+      }
+      stopwatch.stop();
+      final avgTimeMs = stopwatch.elapsedMicroseconds / (100 * 1000);
+      expect(avgTimeMs, lessThan(1.0));
+    });
+    test('Redacts delimited credit cards with spaces and hyphens (N1)', () {
+      const hyphens = 'Payment card 4111-1111-1111-1111';
+      expect(
+        DataScrubber.scrubString(hyphens),
+        equals('Payment card [CARD_REDACTED]'),
+      );
+
+      const spaces = 'Card number 4111 1111 1111 1111 used';
+      expect(
+        DataScrubber.scrubString(spaces),
+        equals('Card number [CARD_REDACTED] used'),
+      );
+    });
+
+    test(
+      'Redacts camelCase compound keys like userPassword and authToken (M1)',
+      () {
+        final input = {
+          'userPassword': 'secretPassword123',
+          'authToken': 'xyz789',
+          'accountSecret': 'topSecret',
+          'myApiKey': 'key-1234',
+          'cardCvv': '999',
+          'userPin': '1234',
+          'author': 'Shakespeare', // Should NOT be redacted
+          'authority': 'admin', // Should NOT be redacted
+        };
+
+        final scrubbed = DataScrubber.scrubMap(input);
+        expect(scrubbed['userPassword'], equals('[REDACTED]'));
+        expect(scrubbed['authToken'], equals('[REDACTED]'));
+        expect(scrubbed['accountSecret'], equals('[REDACTED]'));
+        expect(scrubbed['myApiKey'], equals('[REDACTED]'));
+        expect(scrubbed['cardCvv'], equals('[REDACTED]'));
+        expect(scrubbed['userPin'], equals('[REDACTED]'));
+        expect(scrubbed['author'], equals('Shakespeare'));
+        expect(scrubbed['authority'], equals('admin'));
+      },
+    );
+
+    test(
+      'BreadcrumbCollector integration: scrubs sensitive keys in data (M2)',
+      () {
+        BreadcrumbCollector.clear();
+        BreadcrumbCollector.addBreadcrumb(
+          category: 'auth',
+          action: 'login',
+          target: 'LoginScreen',
+          data: {
+            'password': 'secret123',
+            'authToken': 'Bearer myToken',
+            'normalKey': 'normalValue',
+          },
+        );
+
+        final last = BreadcrumbCollector().breadcrumbs.last;
+        expect(last.data['password'], equals('[REDACTED]'));
+        expect(last.data['authToken'], equals('[REDACTED]'));
+        expect(last.data['normalKey'], equals('normalValue'));
       },
     );
   });
