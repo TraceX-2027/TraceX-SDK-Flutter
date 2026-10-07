@@ -665,5 +665,66 @@ void main() {
       final avgTimeMs = stopwatch.elapsedMicroseconds / (100 * 1000);
       expect(avgTimeMs, lessThan(1.0));
     });
+    test('Redacts delimited credit cards with spaces and hyphens (N1)', () {
+      const hyphens = 'Payment card 4111-1111-1111-1111';
+      expect(
+        DataScrubber.scrubString(hyphens),
+        equals('Payment card [CARD_REDACTED]'),
+      );
+
+      const spaces = 'Card number 4111 1111 1111 1111 used';
+      expect(
+        DataScrubber.scrubString(spaces),
+        equals('Card number [CARD_REDACTED] used'),
+      );
+    });
+
+    test(
+      'Redacts camelCase compound keys like userPassword and authToken (M1)',
+      () {
+        final input = {
+          'userPassword': 'secretPassword123',
+          'authToken': 'xyz789',
+          'accountSecret': 'topSecret',
+          'myApiKey': 'key-1234',
+          'cardCvv': '999',
+          'userPin': '1234',
+          'author': 'Shakespeare', // Should NOT be redacted
+          'authority': 'admin', // Should NOT be redacted
+        };
+
+        final scrubbed = DataScrubber.scrubMap(input);
+        expect(scrubbed['userPassword'], equals('[REDACTED]'));
+        expect(scrubbed['authToken'], equals('[REDACTED]'));
+        expect(scrubbed['accountSecret'], equals('[REDACTED]'));
+        expect(scrubbed['myApiKey'], equals('[REDACTED]'));
+        expect(scrubbed['cardCvv'], equals('[REDACTED]'));
+        expect(scrubbed['userPin'], equals('[REDACTED]'));
+        expect(scrubbed['author'], equals('Shakespeare'));
+        expect(scrubbed['authority'], equals('admin'));
+      },
+    );
+
+    test(
+      'BreadcrumbCollector integration: scrubs sensitive keys in data (M2)',
+      () {
+        BreadcrumbCollector.clear();
+        BreadcrumbCollector.addBreadcrumb(
+          category: 'auth',
+          action: 'login',
+          target: 'LoginScreen',
+          data: {
+            'password': 'secret123',
+            'authToken': 'Bearer myToken',
+            'normalKey': 'normalValue',
+          },
+        );
+
+        final last = BreadcrumbCollector().breadcrumbs.last;
+        expect(last.data['password'], equals('[REDACTED]'));
+        expect(last.data['authToken'], equals('[REDACTED]'));
+        expect(last.data['normalKey'], equals('normalValue'));
+      },
+    );
   });
 }

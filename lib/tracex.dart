@@ -20,6 +20,7 @@ export 'data/collectors/breadcrumbs/breadcrumb_navigator_observer.dart';
 export 'data/collectors/breadcrumbs/tracex_dio_interceptor.dart';
 export 'data/collectors/breadcrumbs/tracex_user_interaction.dart';
 export 'domain/entities/breadcrumb.dart';
+export 'src/data_scrubber.dart';
 
 class TraceX {
   TraceX._();

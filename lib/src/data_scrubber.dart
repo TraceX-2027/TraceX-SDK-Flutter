@@ -15,10 +15,10 @@ class DataScrubber {
     caseSensitive: false,
   );
 
-  // M1: Sensitive Keys Regex with Word Boundaries
+  // M1: Sensitive Keys Regex supporting camelCase transitions (userPassword, authToken, accountSecret)
+  // Matching boundary or lowercase prefix, sensitive root, followed by uppercase transition, boundary or non-alphanumeric
   static final RegExp _sensitiveKeyRegex = RegExp(
-    r'(^|_|\b)(password|secret|token|api_?key|auth|credit_?card|access_?token|cvv|cvc|pin|private_?key|secret_?key|ssn)(_|$|\b)',
-    caseSensitive: false,
+    r'(^|[a-z_]|[^a-zA-Z0-9])(password|secret|token|api_?key|auth|credit_?card|access_?token|cvv|cvc|pin|private_?key|secret_?key|ssn)([A-Z_]|$|[^a-zA-Z0-9])',
   );
 
   // N2: File System Absolute Paths Regex (supports \ and / on Windows, Unix, and Mobile Sandboxes)
@@ -53,7 +53,6 @@ class DataScrubber {
     // 3. Redact Credit Cards using Luhn algorithm
     scrubbed = scrubbed.replaceAllMapped(_creditCardCandidateRegex, (match) {
       final raw = match.group(0)!;
-      // N3: Uses pre-compiled regex
       final digitsOnly = raw.replaceAll(_nonDigitsRegex, '');
       if (digitsOnly.length >= 13 &&
           digitsOnly.length <= 19 &&
@@ -71,12 +70,11 @@ class DataScrubber {
     return map.map((key, value) {
       final stringKey = key.toString();
 
-      if (_sensitiveKeyRegex.hasMatch(stringKey)) {
+      if (_isSensitiveKey(stringKey)) {
         return MapEntry(stringKey, '[REDACTED]');
       }
 
       if (value is Map) {
-        // M3: Safe handling of Maps with non-string keys
         final stringKeyed = value.map((k, v) => MapEntry(k.toString(), v));
         return MapEntry(stringKey, scrubMap(stringKeyed));
       } else if (value is List) {
@@ -88,10 +86,17 @@ class DataScrubber {
     });
   }
 
+  static bool _isSensitiveKey(String key) {
+    // Check both standard case and camelCase matching
+    if (_sensitiveKeyRegex.hasMatch(key)) return true;
+    // Lowercase fallback for compound keys with delimiters
+    final lower = key.toLowerCase();
+    return _sensitiveKeyRegex.hasMatch(lower);
+  }
+
   static List<dynamic> _scrubList(List<dynamic> list) {
     return list.map((item) {
       if (item is Map) {
-        // M3: Safe conversion for nested list items
         final stringKeyed = item.map((k, v) => MapEntry(k.toString(), v));
         return scrubMap(stringKeyed);
       } else if (item is List) {
