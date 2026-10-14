@@ -208,27 +208,90 @@ class CrashQueue {
     await process(sendCrash);
   }
 
-  void startOfflineRetry(Future<void> Function(Crash crash) sendCrash) {
-    if (!offlineBuffer) return;
-    _offlineRetryTimer?.cancel();
-    _offlineRetryTimer = Timer.periodic(const Duration(minutes: 1), (_) async {
-      if (!_telemetryPaused && !_isUnauthorized && !_isProcessing) {
-        _isProcessing = true;
-        try {
-          await _processOfflineCrashes(sendCrash);
-        } finally {
-          _isProcessing = false;
-        }
-      }
-    });
-  }
-
   bool _isRetryable(Object error) {
     if (error is DioException) {
       final code = error.response?.statusCode;
       if (code != null && code >= 400 && code <= 499) return false;
     }
     return true;
+  }
+
+  // داخل lib/core/services/crash_queue.dart
+
+  static const int batchSize = 50;
+
+  Future<void> flushOfflineInBatches(
+    Future<void> Function(List<Crash> batch) sendBatch,
+  ) async {
+    if (_telemetryPaused ||
+        _isUnauthorized ||
+        !offlineBuffer ||
+        _isProcessing) {
+      return;
+    }
+
+    _isProcessing = true;
+
+    try {
+      final cachedCrashes = crashOffline.getCachedCrashes();
+      if (cachedCrashes.isEmpty) return;
+
+      for (var i = 0; i < cachedCrashes.length; i += batchSize) {
+        if (_telemetryPaused || _isUnauthorized) break;
+
+        final end = (i + batchSize < cachedCrashes.length)
+            ? i + batchSize
+            : cachedCrashes.length;
+        final batch = cachedCrashes.sublist(i, end);
+
+        final success = await _sendBatchWithRetry(batch, sendBatch);
+
+        if (success) {
+          for (final crash in batch) {
+            await crashOffline.deleteCrash(crash);
+          }
+          debugPrint(
+            '[TraceX] Flushed batch of ${batch.length} crashes successfully.',
+          );
+        } else {
+          break;
+        }
+      }
+    } finally {
+      _isProcessing = false;
+    }
+  }
+
+  Future<bool> _sendBatchWithRetry(
+    List<Crash> batch,
+    Future<void> Function(List<Crash> batch) sendBatch,
+  ) async {
+    for (int attempt = 1; attempt <= _maxRetries; attempt++) {
+      try {
+        await sendBatch(batch);
+        return true;
+      } catch (e) {
+        debugPrint('[TraceX] Batch attempt $attempt/$_maxRetries failed: $e');
+
+        if (e is DioException && e.response?.statusCode == 401) {
+          _isUnauthorized = true;
+          _telemetryPaused = true;
+          _queue.clear();
+          debugPrint('[TraceX] 401 Unauthorized: Halting batch flush.');
+          return false;
+        }
+
+        if (!_isRetryable(e)) {
+          return false;
+        }
+
+        if (attempt == _maxRetries) return false;
+
+        final delayMs = (1 << (attempt - 1)) * 1000 + Random().nextInt(500);
+        await Future.delayed(Duration(milliseconds: delayMs));
+      }
+    }
+    return false;
   }
 
   void dispose() {

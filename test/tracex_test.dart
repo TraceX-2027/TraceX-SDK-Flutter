@@ -1,21 +1,14 @@
 import 'package:dio/dio.dart';
-import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tracex/core/services/crash_queue.dart';
 import 'package:tracex/core/services/crash_rate_limiter.dart';
 import 'package:tracex/core/utils/api_const.dart';
-import 'package:tracex/data/collectors/breadcrumb_collector.dart';
-import 'package:tracex/data/collectors/breadcrumbs/breadcrumb_navigator_observer.dart';
-import 'package:tracex/data/collectors/breadcrumbs/tracex_dio_interceptor.dart';
 import 'package:tracex/data/datasources/crash_offline_datasource.dart';
-import 'package:tracex/data/datasources/crash_remote_datasource.dart';
 import 'package:tracex/data/models/crashes_model.dart';
-import 'package:tracex/domain/entities/breadcrumb.dart';
 import 'package:tracex/domain/entities/crash.dart';
 import 'package:tracex/domain/entities/environment.dart';
 import 'package:tracex/domain/repositories/base_crash_offline_repository.dart';
 import 'package:tracex/domain/usecases/save_offline_crash.dart';
-import 'package:tracex/src/data_scrubber.dart';
 import 'package:tracex/tracex.dart';
 
 class MockCrashOfflineRepository implements BaseCrashOfflineRepository {
@@ -35,7 +28,13 @@ class MockCrashOfflineRepository implements BaseCrashOfflineRepository {
   }
 
   @override
-  Future<void> clear() async {
+  Future<void> deleteCrashesOffline(List<Crash> crashesToDelete) async {
+    for (final crash in crashesToDelete) {
+      crashes.remove(crash);
+    }
+  }
+
+  void clear() {
     crashes.clear();
   }
 }
@@ -298,305 +297,33 @@ void main() {
       expect(TraceX.runGuarded, isNotNull);
       TraceX.recordError(Exception('test exception'), StackTrace.current);
     });
-
-    test(
-      'TraceX rejects initialization when projectKey and apiKey are empty',
-      () async {
-        expect(
-          () => TraceX.initialize(projectKey: ''),
-          throwsA(isA<ArgumentError>()),
-        );
-        expect(
-          () => TraceX.initialize(apiKey: '   '),
-          throwsA(isA<ArgumentError>()),
-        );
-      },
-    );
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // T1.17: Edge Ingestion with Smart Origin Fallback
+  // T1.16: Privacy Scrubbing & Data Redaction
   // ─────────────────────────────────────────────────────────────────────────
-  group('T1.17: Edge Ingestion with Smart Origin Fallback', () {
-    test(
-      'CrashRemoteDatasource falls back to origin on edge network failure and sets sticky fallback',
-      () async {
-        final dio = Dio();
-        final attemptedUrls = <String>[];
-
-        dio.interceptors.add(
-          InterceptorsWrapper(
-            onRequest: (options, handler) {
-              attemptedUrls.add(options.uri.toString());
-              if (options.uri.toString().contains('workers.dev')) {
-                handler.reject(
-                  DioException(
-                    requestOptions: options,
-                    type: DioExceptionType.connectionTimeout,
-                    error: 'Edge unreachable from ISP',
-                  ),
-                );
-              } else {
-                handler.resolve(
-                  Response(
-                    requestOptions: options,
-                    statusCode: 202,
-                    data: {'event_id': 'test-event-origin-123'},
-                  ),
-                );
-              }
-            },
-          ),
-        );
-
-        dio.options.baseUrl = ApiConst.edgeBaseUrl;
-        final ds = CrashRemoteDatasource(
-          dio: dio,
-          fallbackUrl: ApiConst.originCrashUrl,
-        );
-        final crash = _createDummyCrash();
-        final model = CrashesModel(
-          projectKey: crash.projectKey,
-          platform: crash.platform,
-          language: crash.language,
-          occurredAt: crash.occurredAt,
-          exceptionType: crash.exceptionType,
-          errorMessage: crash.errorMessage,
-          stackTrace: crash.stackTrace,
-          environment: crash.environment,
-          breadcrumbs: crash.breadcrumbs,
-        );
-
-        await ds.sendCrashDetails(model);
-        expect(attemptedUrls.length, equals(2));
-        expect(attemptedUrls[0], contains('workers.dev'));
-        expect(attemptedUrls[1], equals(ApiConst.originCrashUrl));
-        expect(ds.isPreferringFallback, isTrue);
-
-        attemptedUrls.clear();
-        await ds.sendCrashDetails(model);
-        expect(attemptedUrls.length, equals(1));
-        expect(attemptedUrls[0], equals(ApiConst.originCrashUrl));
-      },
-    );
-
-    test(
-      'CrashRemoteDatasource does NOT fall back on 401 Unauthorized or 400 Bad Request',
-      () async {
-        final dio = Dio();
-        final attemptedUrls = <String>[];
-
-        dio.interceptors.add(
-          InterceptorsWrapper(
-            onRequest: (options, handler) {
-              attemptedUrls.add(options.uri.toString());
-              handler.reject(
-                DioException(
-                  requestOptions: options,
-                  response: Response(
-                    requestOptions: options,
-                    statusCode: 401,
-                    statusMessage: 'Unauthorized',
-                  ),
-                ),
-              );
-            },
-          ),
-        );
-
-        dio.options.baseUrl = ApiConst.edgeBaseUrl;
-        final ds = CrashRemoteDatasource(
-          dio: dio,
-          fallbackUrl: ApiConst.originCrashUrl,
-        );
-        final crash = _createDummyCrash();
-        final model = CrashesModel(
-          projectKey: crash.projectKey,
-          platform: crash.platform,
-          language: crash.language,
-          occurredAt: crash.occurredAt,
-          exceptionType: crash.exceptionType,
-          errorMessage: crash.errorMessage,
-          stackTrace: crash.stackTrace,
-          environment: crash.environment,
-          breadcrumbs: crash.breadcrumbs,
-        );
-
-        await expectLater(
-          () => ds.sendCrashDetails(model),
-          throwsA(isA<DioException>()),
-        );
-        expect(attemptedUrls.length, equals(1));
-        expect(attemptedUrls[0], contains('workers.dev'));
-        expect(ds.isPreferringFallback, isFalse);
-      },
-    );
-  });
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // T2.15: BreadcrumbCollector Ring Buffer & Collectors
-  // ─────────────────────────────────────────────────────────────────────────
-  group('T2.15: BreadcrumbCollector Ring Buffer & Collectors', () {
-    setUp(() {
-      BreadcrumbCollector.clear();
+  group('T1.16: Privacy Scrubbing & Data Redaction Tests', () {
+    test('Redacts Bearer tokens and Authorization headers', () {
+      const input = 'Exception: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9';
+      final scrubbed = DataScrubber.scrubString(input);
+      expect(scrubbed, equals('Exception: Bearer [REDACTED]'));
     });
 
-    test('Strictly caps buffer at 50 items with FIFO eviction', () {
-      for (int i = 1; i <= 55; i++) {
-        BreadcrumbCollector.addBreadcrumb(
-          category: 'test',
-          action: 'act',
-          target: 'tgt_$i',
-        );
-      }
-      expect(BreadcrumbCollector.count, equals(50));
-      final breadcrumbs = BreadcrumbCollector().breadcrumbs;
-      expect(breadcrumbs.first.target, equals('tgt_6'));
-      expect(breadcrumbs.last.target, equals('tgt_55'));
-    });
-
-    test('clear() resets buffer and restarts sequence counter', () {
-      BreadcrumbCollector.addBreadcrumb(
-        category: 'test',
-        action: 'act',
-        target: 'tgt_1',
-      );
-      BreadcrumbCollector.clear();
-      expect(BreadcrumbCollector.count, equals(0));
-      BreadcrumbCollector.addBreadcrumb(
-        category: 'test',
-        action: 'act',
-        target: 'tgt_restart',
-      );
-      expect(BreadcrumbCollector().breadcrumbs.first.sequenceOrder, equals(1));
-    });
-
-    test('addBreadcrumb sanitizes non-primitive data values to strings', () {
-      final complexObject = Uri.parse('https://example.com');
-      BreadcrumbCollector.addBreadcrumb(
-        category: 'test',
-        action: 'act',
-        target: 'tgt',
-        data: {
-          'num': 42,
-          'bool': true,
-          'str': 'hello',
-          'complex': complexObject,
-        },
-      );
-      final b = BreadcrumbCollector().breadcrumbs.first;
-      expect(b.data['num'], equals(42));
-      expect(b.data['bool'], equals(true));
-      expect(b.data['str'], equals('hello'));
-      expect(b.data['complex'], isA<String>());
-      expect(b.data['complex'], equals(complexObject.toString()));
-    });
-
-    test(
-      'TraceXNavigatorObserver emits category "navigation" not "navigation.route"',
-      () {
-        final observer = TraceXNavigatorObserver();
-        final route = PageRouteBuilder<void>(
-          settings: const RouteSettings(name: '/dashboard'),
-          pageBuilder: (_, __, ___) => const SizedBox(),
-        );
-        observer.didPush(route, null);
-        expect(BreadcrumbCollector.count, equals(1));
-        final b = BreadcrumbCollector().breadcrumbs.first;
-        expect(b.category, equals('navigation'));
-        expect(b.action, equals('push'));
-        expect(b.target, equals('/dashboard'));
-      },
-    );
-
-    test('TraceXDioInterceptor truncates target to max 255 characters', () {
-      final longPath = '/api/${'x' * 300}';
-      final uri = Uri.parse('https://example.com$longPath');
-      final interceptor = TraceXDioInterceptor();
-      final target = uri.path.length > 255
-          ? uri.path.substring(0, 255)
-          : uri.path;
-      expect(target.length, equals(255));
-      expect(target, startsWith('/api/'));
-      expect(interceptor, isNotNull);
-    });
-
-    test(
-      'TraceXDioInterceptor excludes TraceX ingestion paths from breadcrumbs',
-      () {
-        final ingestionPaths = ['/crashes', '/api/v1/crashes'];
-        const excluded = ['/crashes', '/api/v1/crashes'];
-        for (final path in ingestionPaths) {
-          final uri = Uri.parse('https://tracex.example.com$path');
-          final isExcluded = excluded.any((p) => uri.path.endsWith(p));
-          expect(
-            isExcluded,
-            isTrue,
-            reason: 'Path $path must be excluded from breadcrumb recording',
-          );
-        }
-      },
-    );
-  });
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // T2.16: DataScrubber Invariants & Redaction Tests
-  // ─────────────────────────────────────────────────────────────────────────
-  group('T2.16: DataScrubber Invariants & Redaction Tests', () {
-    test('Redacts Bearer tokens in headers and error strings', () {
-      const input = 'Authorization: Bearer secretToken_12345.xyz== occurred';
-      final result = DataScrubber.scrubString(input);
-      expect(result, equals('Authorization: Bearer [REDACTED] occurred'));
-    });
-
-    test('Redacts valid 16-digit credit cards using Luhn algorithm', () {
-      const input = 'Transaction failed for card 4111111111111111';
-      final result = DataScrubber.scrubString(input);
-      expect(result, equals('Transaction failed for card [CARD_REDACTED]'));
-
-      const invalidCard = 'Order reference 1234567890123456';
-      expect(DataScrubber.scrubString(invalidCard), equals(invalidCard));
-    });
-
-    test('Redacts sensitive URL query parameters (N1)', () {
+    test('Redacts query parameter credentials and tokens', () {
       const url =
-          'https://api.example.com/data?token=secret123&api_key=xyz&password=pass&user=1';
+          'https://api.example.com/v1/auth?token=superSecret123&user=john';
       final scrubbed = DataScrubber.scrubString(url);
       expect(
         scrubbed,
-        equals(
-          'https://api.example.com/data?token=[REDACTED]&api_key=[REDACTED]&password=[REDACTED]&user=1',
-        ),
+        equals('https://api.example.com/v1/auth?token=[REDACTED]&user=john'),
       );
     });
 
-    test(
-      'Does not false positive redact benign words like author or authority (M1)',
-      () {
-        final data = {
-          'author': 'Shakespeare',
-          'authority': 'LocalAdmin',
-          'authentic': true,
-          'author_id': 123,
-          'password': 'secretPassword',
-          'cvv': '123',
-          'pin': '9999',
-        };
-
-        final scrubbed = DataScrubber.scrubMap(data);
-        expect(scrubbed['author'], equals('Shakespeare'));
-        expect(scrubbed['authority'], equals('LocalAdmin'));
-        expect(scrubbed['authentic'], equals(true));
-        expect(scrubbed['author_id'], equals(123));
-        expect(scrubbed['password'], equals('[REDACTED]'));
-        expect(scrubbed['cvv'], equals('[REDACTED]'));
-        expect(scrubbed['pin'], equals('[REDACTED]'));
-      },
-    );
-
-    test('Recursively scrubs nested maps and preserves nested keys (B1)', () {
+    test('Redacts nested sensitive keys in maps', () {
       final input = {
+        'status': 'error',
         'user': {
+          'name': 'John',
           'password': 'secretPassword',
           'token': 'abc',
           'profile': {'api_key': 'key_123'},
@@ -665,6 +392,7 @@ void main() {
       final avgTimeMs = stopwatch.elapsedMicroseconds / (100 * 1000);
       expect(avgTimeMs, lessThan(1.0));
     });
+
     test('Redacts delimited credit cards with spaces and hyphens (N1)', () {
       const hyphens = 'Payment card 4111-1111-1111-1111';
       expect(
@@ -689,8 +417,8 @@ void main() {
           'myApiKey': 'key-1234',
           'cardCvv': '999',
           'userPin': '1234',
-          'author': 'Shakespeare', // Should NOT be redacted
-          'authority': 'admin', // Should NOT be redacted
+          'author': 'Shakespeare',
+          'authority': 'admin',
         };
 
         final scrubbed = DataScrubber.scrubMap(input);

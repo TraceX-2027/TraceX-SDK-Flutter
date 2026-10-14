@@ -15,8 +15,4 @@ class CrashOffline {
   Future<void> deleteCrash(Crash crash) async {
     await baseCrashOfflineRepository.deleteCrash(crash);
   }
-
-  Future<void> clear() async {
-    await baseCrashOfflineRepository.clear();
-  }
 }

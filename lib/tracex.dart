@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
+import 'package:tracex/core/network/connectivity_monitor.dart';
 import 'package:tracex/core/services/crash_queue.dart';
 import 'package:tracex/core/services/crash_rate_limiter.dart';
 import 'package:tracex/core/services/services_locator.dart';
@@ -12,6 +13,7 @@ import 'package:tracex/domain/entities/crash.dart';
 import 'package:tracex/domain/usecases/get_breadcrumb_details.dart';
 import 'package:tracex/domain/usecases/get_environment_details.dart';
 import 'package:tracex/domain/usecases/save_offline_crash.dart';
+import 'package:tracex/domain/usecases/send_batch_crash_details.dart';
 import 'package:tracex/domain/usecases/send_crash_details.dart';
 import 'package:tracex/src/data_scrubber.dart';
 // Public API exports - breadcrumb collectors and entities (B1 Fix)
@@ -57,11 +59,11 @@ class TraceX {
   static GetEnvironmentDetails? _getEnvironmentDetails;
   static GetBreadcrumbDetails? _getBreadcrumbDetails;
   static CrashOffline? _crashOffline;
+  static ConnectivityMonitor? _connectivityMonitor;
 
   static CrashRateLimiter? _rateLimiter;
   static CrashQueue? _crashQueue;
 
-  // سجل بصمات الكراشات لمنع التكرار بدقة عالية
   static final Map<int, DateTime> _crashHistory = {};
 
   static bool _initialized = false;
@@ -173,9 +175,13 @@ class TraceX {
       // Start Offline Retry
       // -----------------------------------------
 
-      if (_offlineBuffer) {
-        _crashQueue!.startOfflineRetry(_sendCrashDetails!.execute);
-      }
+      _connectivityMonitor = ConnectivityMonitor();
+      _connectivityMonitor!.startListening(
+        onReconnected: () {
+          final sendBatch = sl<SendBatchCrashDetails>();
+          _crashQueue?.flushOfflineInBatches(sendBatch.execute);
+        },
+      );
 
       // -----------------------------------------
       // Initialize Environment
@@ -231,7 +237,8 @@ class TraceX {
       _getEnvironmentDetails = null;
       _getBreadcrumbDetails = null;
       _crashOffline = null;
-
+      _connectivityMonitor?.stopListening();
+      _connectivityMonitor = null;
       // Restore previous handlers
       FlutterError.onError = _previousFlutterErrorHandler;
       PlatformDispatcher.instance.onError = _previousPlatformErrorHandler;
@@ -331,7 +338,7 @@ class TraceX {
 
     try {
       // -----------------------------------------
-      // 1. Deduplication (خوارزمية منع التكرار بالبصمة)
+      // 1. Deduplication
       // -----------------------------------------
 
       if (_isDuplicate(
@@ -341,6 +348,8 @@ class TraceX {
         timestamp: occurredAt,
       )) {
         _log('TraceX: Duplicate crash ignored.');
+        debugPrint("TraceC: Is Duplicate");
+
         return;
       }
 

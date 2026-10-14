@@ -25,4 +25,26 @@ class CrashRepository extends BaseCrashRepository {
 
     await baseCrashRemoteDatasources.sendCrashDetails(crashesModel);
   }
+
+  @override
+  Future<void> sendBatchCrashDetails(List<Crash> crashes) async {
+    final crashesModels = crashes
+        .map(
+          (crash) => CrashesModel(
+            projectKey: crash.projectKey,
+            platform: crash.platform,
+            language: crash.language,
+            occurredAt: crash.occurredAt,
+            exceptionType: crash.exceptionType,
+            errorMessage: crash.errorMessage,
+            stackTrace: crash.stackTrace,
+            environment: crash.environment,
+            breadcrumbs: crash.breadcrumbs,
+            id: crash.id,
+          ),
+        )
+        .toList();
+
+    await baseCrashRemoteDatasources.sendBatchCrashDetails(crashesModels);
+  }
 }
