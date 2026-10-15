@@ -1,4 +1,5 @@
 # Miscellaneous
+*.tar.gz
 *.class
 *.log
 *.pyc

@@ -1,5 +1,9 @@
+import 'dart:async';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tracex/core/network/connectivity_monitor.dart';
 import 'package:tracex/core/services/crash_queue.dart';
 import 'package:tracex/core/services/crash_rate_limiter.dart';
 import 'package:tracex/core/utils/api_const.dart';
@@ -39,8 +43,31 @@ class MockCrashOfflineRepository implements BaseCrashOfflineRepository {
   }
 }
 
-Crash _createDummyCrash({String projectKey = 'test-project-key'}) {
+class FakeConnectivity implements Connectivity {
+  final StreamController<List<ConnectivityResult>> _controller =
+      StreamController<List<ConnectivityResult>>.broadcast();
+
+  void emit(List<ConnectivityResult> results) {
+    _controller.add(results);
+  }
+
+  @override
+  Stream<List<ConnectivityResult>> get onConnectivityChanged =>
+      _controller.stream;
+
+  @override
+  Future<List<ConnectivityResult>> checkConnectivity() async {
+    return [ConnectivityResult.none];
+  }
+
+  void dispose() {
+    _controller.close();
+  }
+}
+
+Crash _createDummyCrash({String projectKey = 'test-project-key', int? id}) {
   return Crash(
+    id: id,
     projectKey: projectKey,
     platform: 'flutter',
     language: 'dart',
@@ -291,12 +318,187 @@ void main() {
   group('T1.14 & T1.15: TraceX Public API Entry Points', () {
     test('TraceX exposes required public methods without error', () {
       expect(TraceX.init, isNotNull);
-      expect(TraceX.initialize, isNotNull);
       expect(TraceX.recordFlutterError, isNotNull);
       expect(TraceX.recordError, isNotNull);
       expect(TraceX.runGuarded, isNotNull);
       TraceX.recordError(Exception('test exception'), StackTrace.current);
     });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // T2.15: Breadcrumb Tracking & Ring Buffer Invariants (RESTORED - B2)
+  // ─────────────────────────────────────────────────────────────────────────
+  group('T2.15: Breadcrumb Tracking & Ring Buffer Invariants', () {
+    setUp(() {
+      BreadcrumbCollector.clear();
+    });
+
+    test('Enforces 50-item ring buffer capacity with FIFO eviction', () {
+      for (int i = 1; i <= 60; i++) {
+        BreadcrumbCollector.addBreadcrumb(
+          category: 'test',
+          action: 'step_$i',
+          target: 'target_$i',
+        );
+      }
+
+      final breadcrumbs = BreadcrumbCollector().breadcrumbs;
+      expect(breadcrumbs.length, equals(50));
+      // First 10 items were evicted; first remaining is step_11
+      expect(breadcrumbs.first.action, equals('step_11'));
+      expect(breadcrumbs.last.action, equals('step_60'));
+    });
+
+    test('Clear resets buffer and sequence order counter', () {
+      BreadcrumbCollector.addBreadcrumb(
+        category: 'ui',
+        action: 'tap',
+        target: 'button',
+      );
+      expect(BreadcrumbCollector().breadcrumbs.length, equals(1));
+
+      BreadcrumbCollector.clear();
+      expect(BreadcrumbCollector().breadcrumbs, isEmpty);
+
+      BreadcrumbCollector.addBreadcrumb(
+        category: 'ui',
+        action: 'tap',
+        target: 'button2',
+      );
+      expect(BreadcrumbCollector().breadcrumbs.first.sequenceOrder, equals(1));
+    });
+
+    test('Sanitizes non-primitive values to JSON-safe primitives', () {
+      BreadcrumbCollector.addBreadcrumb(
+        category: 'data',
+        action: 'filter',
+        target: 'grid',
+        data: {'count': 42, 'isValid': true, 'customObj': DateTime(2026, 1, 1)},
+      );
+
+      final crumb = BreadcrumbCollector().breadcrumbs.first;
+      expect(crumb.data['count'], equals(42));
+      expect(crumb.data['isValid'], equals(true));
+      expect(crumb.data['customObj'], isA<String>());
+    });
+
+    test('TraceXNavigatorObserver uses category "navigation"', () {
+      final observer = TraceXNavigatorObserver();
+      final route = PageRouteBuilder(
+        settings: const RouteSettings(name: '/dashboard'),
+        pageBuilder: (_, __, ___) => const SizedBox(),
+      );
+
+      observer.didPush(route, null);
+      final breadcrumbs = BreadcrumbCollector().breadcrumbs;
+      expect(breadcrumbs.isNotEmpty, isTrue);
+      expect(breadcrumbs.last.category, equals('navigation'));
+      expect(breadcrumbs.last.target, equals('/dashboard'));
+    });
+
+    test('TraceXDioInterceptor ignores internal TraceX ingestion paths', () {
+      final interceptor = TraceXDioInterceptor();
+      final handler = ResponseInterceptorHandler();
+
+      // Normal app API request
+      final normalResponse = Response(
+        requestOptions: RequestOptions(path: 'https://api.my-app.com/items'),
+        statusCode: 200,
+      );
+      interceptor.onResponse(normalResponse, handler);
+      expect(BreadcrumbCollector().breadcrumbs.length, equals(1));
+
+      // TraceX internal ingestion endpoint - MUST BE IGNORED
+      final internalResponse = Response(
+        requestOptions: RequestOptions(
+          path: 'https://tracex.dev/api/v1/crashes',
+        ),
+        statusCode: 200,
+      );
+      interceptor.onResponse(
+        internalResponse,
+        ResponseInterceptorHandler(),
+      ); // Count must still be 1 (ignored)
+      expect(BreadcrumbCollector().breadcrumbs.length, equals(1));
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // T2.18: Connectivity & Batch Sync Invariants (ADDED - B2)
+  // ─────────────────────────────────────────────────────────────────────────
+  group('T2.18: Connectivity & Batch Sync Invariants', () {
+    test(
+      'Stateful transition from none to active connection fires onReconnected',
+      () async {
+        final fakeConn = FakeConnectivity();
+        final monitor = ConnectivityMonitor(connectivity: fakeConn);
+        int callCount = 0;
+
+        monitor.startListening(
+          onReconnected: () {
+            callCount++;
+          },
+        );
+
+        fakeConn.emit([ConnectivityResult.none]);
+        await pumpEventQueue();
+        expect(callCount, equals(0));
+
+        // Reconnect
+        fakeConn.emit([ConnectivityResult.wifi]);
+        await pumpEventQueue();
+        expect(callCount, equals(1));
+
+        // Wifi -> Mobile without disconnect should NOT trigger again
+        fakeConn.emit([ConnectivityResult.mobile]);
+        await pumpEventQueue();
+        expect(callCount, equals(1));
+
+        monitor.stopListening();
+        fakeConn.dispose();
+      },
+    );
+
+    test(
+      'flushOfflineInBatches chunks at 50 crashes maximum and halts on 401',
+      () async {
+        final mockRepo = MockCrashOfflineRepository();
+        final crashOffline = CrashOffline(baseCrashOfflineRepository: mockRepo);
+        final queue = CrashQueue(crashOffline: crashOffline);
+
+        for (int i = 1; i <= 65; i++) {
+          await mockRepo.saveCrash(_createDummyCrash(id: i));
+        }
+
+        final List<int> chunks = [];
+        await queue.flushOfflineInBatches((batch) async {
+          chunks.add(batch.length);
+        });
+
+        expect(chunks, equals([50, 15]));
+        expect(mockRepo.crashes, isEmpty);
+
+        // Verify 401 Halting
+        await mockRepo.saveCrash(_createDummyCrash(id: 99));
+        int attempts = 0;
+        await queue.flushOfflineInBatches((batch) async {
+          attempts++;
+          throw DioException(
+            requestOptions: RequestOptions(path: 'crashes/batch'),
+            response: Response(
+              requestOptions: RequestOptions(path: 'crashes/batch'),
+              statusCode: 401,
+            ),
+          );
+        });
+
+        expect(attempts, equals(1));
+        expect(queue.isUnauthorized, isTrue);
+        expect(queue.isTelemetryPaused, isTrue);
+
+        queue.dispose();
+      },
+    );
   });
 
   // ─────────────────────────────────────────────────────────────────────────

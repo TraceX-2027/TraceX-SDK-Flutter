@@ -216,8 +216,6 @@ class CrashQueue {
     return true;
   }
 
-  // داخل lib/core/services/crash_queue.dart
-
   static const int batchSize = 50;
 
   Future<void> flushOfflineInBatches(
@@ -247,9 +245,9 @@ class CrashQueue {
         final success = await _sendBatchWithRetry(batch, sendBatch);
 
         if (success) {
-          for (final crash in batch) {
-            await crashOffline.deleteCrash(crash);
-          }
+          await crashOffline.baseCrashOfflineRepository.deleteCrashesOffline(
+            batch,
+          );
           debugPrint(
             '[TraceX] Flushed batch of ${batch.length} crashes successfully.',
           );
@@ -278,6 +276,18 @@ class CrashQueue {
           _telemetryPaused = true;
           _queue.clear();
           debugPrint('[TraceX] 401 Unauthorized: Halting batch flush.');
+          return false;
+        }
+
+        if (e is DioException && e.response?.statusCode == 429) {
+          final retryAfter =
+              int.tryParse(e.response?.headers.value('Retry-After') ?? '') ??
+              60;
+          _telemetryPaused = true;
+          debugPrint(
+            '[TraceX] Batch rate limited. Pausing for $retryAfter seconds.',
+          );
+          unawaited(_resumeAfterRateLimit(retryAfter, (crash) async {}));
           return false;
         }
 

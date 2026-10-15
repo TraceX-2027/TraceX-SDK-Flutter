@@ -36,25 +36,6 @@ class TraceX {
   static String? _projectKey;
   static bool _enableLogging = false;
 
-  /// Alias for [initialize] to adhere to standard Flutter SDK naming conventions
-  static Future<void> init({
-    String? projectKey,
-    String? apiKey,
-    String? endpoint,
-    String? fallbackEndpoint,
-    bool enableLogging = false,
-    bool offlineBuffer = true,
-    bool captureBreadcrumbs = true,
-  }) => initialize(
-    projectKey: projectKey,
-    apiKey: apiKey,
-    endpoint: endpoint,
-    fallbackEndpoint: fallbackEndpoint,
-    enableLogging: enableLogging,
-    offlineBuffer: offlineBuffer,
-    captureBreadcrumbs: captureBreadcrumbs,
-  );
-
   static SendCrashDetails? _sendCrashDetails;
   static GetEnvironmentDetails? _getEnvironmentDetails;
   static GetBreadcrumbDetails? _getBreadcrumbDetails;
@@ -101,8 +82,8 @@ class TraceX {
   // Initialize
   // -----------------------------------------
 
-  static Future<void> initialize({
-    String? projectKey,
+  static Future<void> init({
+    required String projectKey,
     String? apiKey,
     String? endpoint,
     String? fallbackEndpoint,
@@ -114,7 +95,7 @@ class TraceX {
       return;
     }
 
-    final effectiveKey = (projectKey != null && projectKey.trim().isNotEmpty)
+    final effectiveKey = (projectKey.trim().isNotEmpty)
         ? projectKey.trim()
         : (apiKey != null && apiKey.trim().isNotEmpty)
         ? apiKey.trim()
@@ -290,6 +271,10 @@ class TraceX {
     _projectKey = null;
     _enableLogging = false;
     _crashHistory.clear();
+
+    _connectivityMonitor?.stopListening();
+    _connectivityMonitor = null;
+
     _crashQueue?.dispose();
     _crashQueue = null;
     _rateLimiter = null;
@@ -348,7 +333,7 @@ class TraceX {
         timestamp: occurredAt,
       )) {
         _log('TraceX: Duplicate crash ignored.');
-        debugPrint("TraceC: Is Duplicate");
+        _log("TraceX: Is Duplicate");
 
         return;
       }
