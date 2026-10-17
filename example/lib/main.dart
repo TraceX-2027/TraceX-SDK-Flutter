@@ -6,7 +6,7 @@ void main() async {
 
   // Initialize TraceX crash capture and forensic telemetry
   await TraceX.init(
-    projectKey: 'tracex_live_dd047b660d19e79baf7ebba87dd55429',
+    projectKey: 'tracex_live_demo_example_key_12345',
     enableLogging: true,
   );
 
