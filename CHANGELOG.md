@@ -1,3 +1,11 @@
+## 1.0.1
+
+* Added full Swift Package Manager (SPM) support for iOS (`Package.swift`).
+* Added runnable example application under `example/`.
+* Expanded dependency constraints to support `device_info_plus` v13 and `package_info_plus` v10.
+* Enhanced comprehensive API documentation comments across all public symbols.
+* Modernized library directives and resolved static analysis warnings.
+
 ## 1.0.0
 
 * Initial release of the official TraceX Flutter SDK.

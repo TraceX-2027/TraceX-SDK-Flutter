@@ -1,10 +1,15 @@
 import 'package:dio/dio.dart';
 import 'package:tracex_flutter/data/collectors/breadcrumb_collector.dart';
 
+/// A Dio [Interceptor] that automatically intercepts HTTP requests, responses,
+/// and errors to record diagnostic network breadcrumbs.
 class TraceXDioInterceptor extends Interceptor {
+  /// Creates a new [TraceXDioInterceptor] instance.
+  TraceXDioInterceptor();
+
   /// Paths belonging to the TraceX SDK itself.
   /// Requests to these paths will NOT generate breadcrumbs to avoid
-  /// self-telemetry loops polluting the ring buffer. (N2 Fix)
+  /// self-telemetry loops polluting the ring buffer.
   static const _excludedPaths = ['/crashes', '/api/v1/crashes'];
 
   bool _isTracexIngestion(Uri uri) {
@@ -12,7 +17,7 @@ class TraceXDioInterceptor extends Interceptor {
   }
 
   /// Sanitizes a URI to a safe target string and truncates to max 255
-  /// characters to match the PostgreSQL VARCHAR(255) column limit. (B2 Fix)
+  /// characters to match the PostgreSQL VARCHAR(255) column limit.
   String _resolveTarget(Uri uri) {
     final path = uri.path.isNotEmpty ? uri.path : uri.toString();
     return path.length > 255 ? path.substring(0, 255) : path;
@@ -27,7 +32,6 @@ class TraceXDioInterceptor extends Interceptor {
   @override
   void onResponse(Response response, ResponseInterceptorHandler handler) {
     try {
-      // N2 Fix: skip TraceX ingestion endpoints
       if (!_isTracexIngestion(response.requestOptions.uri)) {
         final startTime =
             response.requestOptions.extra['tracex_start_time'] as int?;
@@ -38,7 +42,7 @@ class TraceXDioInterceptor extends Interceptor {
         BreadcrumbCollector.addBreadcrumb(
           category: 'network.http',
           action: response.requestOptions.method,
-          target: _resolveTarget(response.requestOptions.uri), // B2 Fix
+          target: _resolveTarget(response.requestOptions.uri),
           data: {
             'status_code': response.statusCode ?? 200,
             'duration_ms': durationMs,
@@ -46,7 +50,7 @@ class TraceXDioInterceptor extends Interceptor {
         );
       }
     } catch (_) {
-      // M3 Fix: telemetry collection must never disrupt application flow
+      // Telemetry collection must never disrupt application flow
     }
     super.onResponse(response, handler);
   }
@@ -54,7 +58,6 @@ class TraceXDioInterceptor extends Interceptor {
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
     try {
-      // N2 Fix: skip TraceX ingestion endpoints
       if (!_isTracexIngestion(err.requestOptions.uri)) {
         final startTime = err.requestOptions.extra['tracex_start_time'] as int?;
         final durationMs = startTime != null
@@ -64,7 +67,7 @@ class TraceXDioInterceptor extends Interceptor {
         BreadcrumbCollector.addBreadcrumb(
           category: 'network.http',
           action: err.requestOptions.method,
-          target: _resolveTarget(err.requestOptions.uri), // B2 Fix
+          target: _resolveTarget(err.requestOptions.uri),
           data: {
             'status_code': err.response?.statusCode ?? 0,
             'duration_ms': durationMs,
@@ -73,7 +76,7 @@ class TraceXDioInterceptor extends Interceptor {
         );
       }
     } catch (_) {
-      // M3 Fix: telemetry collection must never disrupt application flow
+      // Telemetry collection must never disrupt application flow
     }
     super.onError(err, handler);
   }

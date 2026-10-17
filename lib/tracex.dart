@@ -24,10 +24,14 @@ export 'data/collectors/breadcrumbs/tracex_user_interaction.dart';
 export 'domain/entities/breadcrumb.dart';
 export 'src/data_scrubber.dart';
 
+/// Main entrypoint for TraceX crash capture, breadcrumb tracking, and forensic telemetry in Flutter applications.
 class TraceX {
   TraceX._();
 
+  /// Default Cloudflare Edge ingestion endpoint URL.
   static const String defaultEndpoint = ApiConst.edgeBaseUrl;
+
+  /// Default Origin ingestion endpoint URL.
   static const String originEndpoint = ApiConst.originBaseUrl;
 
   static const String _platform = 'flutter';
@@ -53,16 +57,20 @@ class TraceX {
   static bool _offlineBuffer = true;
   static bool _captureBreadcrumbs = true;
 
+  /// Whether the TraceX SDK has completed initialization.
   static bool get isInitialized => _initialized;
 
+  /// The active project API key configured for telemetry ingestion.
   static String? get projectKey => _projectKey;
 
+  /// Number of crash payloads currently queued for transmission or offline storage.
   static int get queueLength => _crashQueue?.length ?? 0;
 
+  /// The internal crash transmission queue instance.
   @visibleForTesting
   static CrashQueue? get crashQueue => _crashQueue;
 
-  /// Optional listener for diagnostic events and lifecycle logs
+  /// Optional listener for diagnostic events and lifecycle logs.
   static void Function(String message)? onDiagnosticLog;
 
   static FlutterExceptionHandler? _previousFlutterErrorHandler;
@@ -286,6 +294,7 @@ class TraceX {
     PlatformDispatcher.instance.onError = _previousPlatformErrorHandler;
   }
 
+  /// Records a manual breadcrumb event with a category, action, and target.
   static void recordBreadcrumb({
     required String category,
     required String action,

@@ -5,11 +5,15 @@ import 'package:tracex_flutter/data/collectors/breadcrumb_collector.dart';
 ///
 /// Uses [GestureDetector.onTap] instead of raw pointer tracking so that
 /// scroll gestures, flings, and cancelled touches are NOT recorded,
-/// preventing the 50-item ring buffer from being flooded. (M1 Fix)
+/// preventing the 50-item ring buffer from being flooded.
 class TraceXTapListener extends StatelessWidget {
+  /// The widget subtree monitored for confirmed tap interactions.
   final Widget child;
+
+  /// Semantic identifier or label associated with this UI component.
   final String label;
 
+  /// Creates a [TraceXTapListener] wrapping the provided [child].
   const TraceXTapListener({
     super.key,
     required this.child,
@@ -21,7 +25,6 @@ class TraceXTapListener extends StatelessWidget {
     return GestureDetector(
       onTap: () {
         try {
-          // M1 Fix: onTap fires only on confirmed taps, not scroll gestures
           BreadcrumbCollector.addBreadcrumb(
             category: 'ui.tap',
             action: 'tap',
@@ -29,7 +32,7 @@ class TraceXTapListener extends StatelessWidget {
             data: {'widget': child.runtimeType.toString()},
           );
         } catch (_) {
-          // M3 Fix: telemetry collection must never disrupt application flow
+          // Telemetry collection must never disrupt application flow
         }
       },
       behavior: HitTestBehavior.translucent,

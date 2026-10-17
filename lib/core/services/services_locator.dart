@@ -20,9 +20,13 @@ import 'package:tracex_flutter/domain/usecases/save_offline_crash.dart';
 import 'package:tracex_flutter/domain/usecases/send_batch_crash_details.dart';
 import 'package:tracex_flutter/domain/usecases/send_crash_details.dart';
 
+/// Service locator container instance used for TraceX dependency injection.
 final sl = GetIt.asNewInstance();
 
+/// Dependency injection and service registry for TraceX core services, datasources, and repositories.
 class ServicesLocator {
+  ServicesLocator._();
+
   static final Dio _dio = Dio(
     BaseOptions(
       connectTimeout: const Duration(seconds: 5),
@@ -30,7 +34,7 @@ class ServicesLocator {
       receiveTimeout: const Duration(seconds: 5),
       headers: {
         'Content-Type': 'application/json',
-        'User-Agent': 'TraceX-Flutter-SDK/1.0.0',
+        'User-Agent': 'TraceX-Flutter-SDK/1.0.1',
         'Connection': 'keep-alive',
       },
     ),
@@ -43,12 +47,15 @@ class ServicesLocator {
 
   static bool _initialized = false;
 
+  /// Internal [Dio] HTTP client instance.
   @visibleForTesting
   static Dio get dio => _dio;
 
+  /// Whether services have been initialized.
   @visibleForTesting
   static bool get isInitialized => _initialized;
 
+  /// Initializes all service singletons and registers them with [sl].
   static Future<void> init({String? endpoint, String? fallbackEndpoint}) async {
     if (_initialized) {
       return;
@@ -143,6 +150,7 @@ class ServicesLocator {
     );
   }
 
+  /// Resets all registered services and singletons in the service locator.
   static Future<void> reset() async {
     BreadcrumbCollector.clear();
     await sl.reset();

@@ -2,13 +2,20 @@ import 'dart:collection';
 import 'package:tracex_flutter/data/models/breadcrumb_model.dart';
 import 'package:tracex_flutter/src/data_scrubber.dart';
 
+/// Collector that manages an in-memory 50-item ring buffer for diagnostic breadcrumb telemetry.
 class BreadcrumbCollector {
+  /// Default constructor for [BreadcrumbCollector].
+  BreadcrumbCollector();
+
+  /// Maximum number of breadcrumb entries retained before oldest entries are evicted.
   static const int maxCapacity = 50;
   static final Queue<BreadcrumbModel> _buffer = Queue<BreadcrumbModel>();
   static int _sequenceOrder = 0;
 
+  /// Current snapshot of buffered breadcrumb entries in chronological order.
   List<BreadcrumbModel> get breadcrumbs => List.unmodifiable(_buffer.toList());
 
+  /// Records a new breadcrumb event, evicting the oldest record if buffer exceeds [maxCapacity].
   static void addBreadcrumb({
     required String category,
     required String action,
@@ -28,13 +35,11 @@ class BreadcrumbCollector {
         category: category,
         action: action,
         target: DataScrubber.scrubString(target),
-        // B1: Scrub sensitive dictionary keys/values first, then sanitize primitives
         data: Map.unmodifiable(_sanitizeData(data)),
       ),
     );
   }
 
-  /// B1: Pass raw map directly to DataScrubber first, then sanitize leaf values to JSON-safe primitives
   static Map<String, dynamic> _sanitizeData(Map<String, dynamic> raw) {
     final scrubbedMap = DataScrubber.scrubMap(raw);
     return _primitiveSanitize(scrubbedMap);
@@ -61,8 +66,10 @@ class BreadcrumbCollector {
     });
   }
 
+  /// Number of breadcrumbs currently stored in the ring buffer.
   static int get count => _buffer.length;
 
+  /// Clears all buffered breadcrumbs and resets the sequence counter.
   static void clear() {
     _buffer.clear();
     _sequenceOrder = 0;

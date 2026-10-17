@@ -7,18 +7,12 @@ import 'package:tracex_flutter/core/network/connectivity_monitor.dart';
 import 'package:tracex_flutter/core/services/crash_queue.dart';
 import 'package:tracex_flutter/core/services/crash_rate_limiter.dart';
 import 'package:tracex_flutter/core/utils/api_const.dart';
-import 'package:tracex_flutter/data/collectors/breadcrumb_collector.dart';
-import 'package:tracex_flutter/data/collectors/breadcrumbs/breadcrumb_navigator_observer.dart';
-import 'package:tracex_flutter/data/collectors/breadcrumbs/tracex_dio_interceptor.dart';
 import 'package:tracex_flutter/data/datasources/crash_offline_datasource.dart';
-import 'package:tracex_flutter/data/datasources/crash_remote_datasource.dart';
 import 'package:tracex_flutter/data/models/crashes_model.dart';
-import 'package:tracex_flutter/domain/entities/breadcrumb.dart';
 import 'package:tracex_flutter/domain/entities/crash.dart';
 import 'package:tracex_flutter/domain/entities/environment.dart';
 import 'package:tracex_flutter/domain/repositories/base_crash_offline_repository.dart';
 import 'package:tracex_flutter/domain/usecases/save_offline_crash.dart';
-import 'package:tracex_flutter/src/data_scrubber.dart';
 import 'package:tracex_flutter/tracex.dart';
 
 class MockCrashOfflineRepository implements BaseCrashOfflineRepository {
@@ -193,10 +187,7 @@ void main() {
           'https://tracex-edge-ingest.kareemadel10110.workers.dev/api/v1/',
         ),
       );
-      expect(
-        ApiConst.originBaseUrl,
-        equals('https://api.tracex.dev/api/v1/'),
-      );
+      expect(ApiConst.originBaseUrl, equals('https://api.tracex.dev/api/v1/'));
       expect(
         ApiConst.crashUrl,
         equals(

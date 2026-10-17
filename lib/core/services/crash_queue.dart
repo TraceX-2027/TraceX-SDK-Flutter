@@ -7,8 +7,12 @@ import 'package:flutter/foundation.dart';
 import 'package:tracex_flutter/domain/entities/crash.dart';
 import 'package:tracex_flutter/domain/usecases/save_offline_crash.dart';
 
+/// Manages in-memory queueing, offline disk buffering, and exponential backoff retry for crash telemetry.
 class CrashQueue {
+  /// Local offline storage use case for saving crashes when disconnected or rate-limited.
   final CrashOffline crashOffline;
+
+  /// Whether offline caching to disk is enabled.
   final bool offlineBuffer;
 
   final Queue<Crash> _queue = Queue<Crash>();
@@ -20,8 +24,10 @@ class CrashQueue {
   final int _maxRetries = 3;
   Timer? _offlineRetryTimer;
 
+  /// Creates a [CrashQueue] with the specified [crashOffline] handler.
   CrashQueue({required this.crashOffline, this.offlineBuffer = true});
 
+  /// Current number of crash incidents queued in memory.
   int get length => _queue.length;
 
   @visibleForTesting
@@ -33,9 +39,7 @@ class CrashQueue {
   @visibleForTesting
   bool get isProcessing => _isProcessing;
 
-  // -----------------------------------------
-  // Add Crash
-  // -----------------------------------------
+  /// Adds a [crash] to the transmission queue or buffers it offline if paused/offline.
   Future<void> add(Crash crash) async {
     if (_isUnauthorized) {
       debugPrint('TraceX: API key is unauthorized. Crash discarded.');
@@ -58,6 +62,8 @@ class CrashQueue {
   // -----------------------------------------
   // Process Queue
   // -----------------------------------------
+
+  /// Processes queued crashes, transmitting them over HTTP using the provided [sendCrash] callback.
   Future<void> process(Future<void> Function(Crash crash) sendCrash) async {
     if (_telemetryPaused || _isProcessing || _isUnauthorized) return;
 
@@ -216,8 +222,10 @@ class CrashQueue {
     return true;
   }
 
+  /// Maximum batch size when syncing offline buffered crashes to the server.
   static const int batchSize = 50;
 
+  /// Flushes locally buffered offline crashes in chunks up to [batchSize] using [sendBatch].
   Future<void> flushOfflineInBatches(
     Future<void> Function(List<Crash> batch) sendBatch,
   ) async {
@@ -304,6 +312,7 @@ class CrashQueue {
     return false;
   }
 
+  /// Disposes active retry timers and clears the in-memory queue.
   void dispose() {
     _offlineRetryTimer?.cancel();
     _offlineRetryTimer = null;
