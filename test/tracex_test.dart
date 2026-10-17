@@ -195,7 +195,7 @@ void main() {
       );
       expect(
         ApiConst.originBaseUrl,
-        equals('https://tracex-api.kareemadel.com/api/v1/'),
+        equals('https://api.tracex.dev/api/v1/'),
       );
       expect(
         ApiConst.crashUrl,
@@ -205,7 +205,7 @@ void main() {
       );
       expect(
         ApiConst.originCrashUrl,
-        equals('https://tracex-api.kareemadel.com/api/v1/crashes'),
+        equals('https://api.tracex.dev/api/v1/crashes'),
       );
     });
 
