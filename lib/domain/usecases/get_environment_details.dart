@@ -1,5 +1,5 @@
-import 'package:tracex/domain/entities/environment.dart';
-import 'package:tracex/domain/repositories/base_environment_repository.dart';
+import 'package:tracex_flutter/domain/entities/environment.dart';
+import 'package:tracex_flutter/domain/repositories/base_environment_repository.dart';
 
 class GetEnvironmentDetails {
   final BaseEnvironmentRepository baseEnvironmentCollector;

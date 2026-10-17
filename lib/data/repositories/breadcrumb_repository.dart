@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
-import 'package:tracex/data/collectors/breadcrumb_collector.dart';
-import 'package:tracex/domain/entities/breadcrumb.dart';
-import 'package:tracex/domain/repositories/base_breadcrumb_repository.dart';
+import 'package:tracex_flutter/data/collectors/breadcrumb_collector.dart';
+import 'package:tracex_flutter/domain/entities/breadcrumb.dart';
+import 'package:tracex_flutter/domain/repositories/base_breadcrumb_repository.dart';
 
 class BreadcrumbRepository extends BaseBreadcrumbRepository {
   final BreadcrumbCollector breadcrumbCollector;

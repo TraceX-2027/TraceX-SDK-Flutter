@@ -4,7 +4,7 @@ import 'dart:isolate';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:tracex/data/models/crashes_model.dart';
+import 'package:tracex_flutter/data/models/crashes_model.dart';
 
 abstract class BaseCrashRemoteDatasource {
   Future<void> sendCrashDetails(CrashesModel crash);

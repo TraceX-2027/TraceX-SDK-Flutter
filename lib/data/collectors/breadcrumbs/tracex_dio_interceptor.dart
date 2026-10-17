@@ -1,5 +1,5 @@
 import 'package:dio/dio.dart';
-import 'package:tracex/data/collectors/breadcrumb_collector.dart';
+import 'package:tracex_flutter/data/collectors/breadcrumb_collector.dart';
 
 class TraceXDioInterceptor extends Interceptor {
   /// Paths belonging to the TraceX SDK itself.

@@ -1,4 +1,4 @@
-import 'package:tracex/domain/entities/crash.dart';
+import 'package:tracex_flutter/domain/entities/crash.dart';
 
 abstract class BaseCrashOfflineRepository {
   Future<void> saveCrash(Crash crash);

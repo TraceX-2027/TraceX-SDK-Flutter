@@ -1,6 +1,6 @@
 import 'dart:collection';
-import 'package:tracex/data/models/breadcrumb_model.dart';
-import 'package:tracex/src/data_scrubber.dart';
+import 'package:tracex_flutter/data/models/breadcrumb_model.dart';
+import 'package:tracex_flutter/src/data_scrubber.dart';
 
 class BreadcrumbCollector {
   static const int maxCapacity = 50;

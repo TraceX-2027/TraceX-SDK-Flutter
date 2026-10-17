@@ -20,12 +20,12 @@ Official Flutter SDK for **TraceX** — developer-first, AI-assisted crash obser
 
 ## Installation
 
-Add `tracex` to your `pubspec.yaml` via Git repository:
+Add `tracex_flutter` to your Flutter project:
 
 ### Option 1: Terminal Command
 
 ```bash
-flutter pub add tracex --git-url=https://github.com/TraceX-2027/TraceX-SDK-Flutter.git
+flutter pub add tracex_flutter
 ```
 
 ### Option 2: pubspec.yaml
@@ -36,8 +36,7 @@ Add the dependency under `dependencies` in your `pubspec.yaml`:
 dependencies:
   flutter:
     sdk: flutter
-  tracex:
-    git: https://github.com/TraceX-2027/TraceX-SDK-Flutter.git
+  tracex_flutter: ^1.0.0
 ```
 
 Then run:
@@ -56,7 +55,7 @@ Initialize TraceX before running `runApp()`. TraceX automatically hooks into `Fl
 
 ```dart
 import 'package:flutter/material.dart';
-import 'package:tracex/tracex.dart';
+import 'package:tracex_flutter/tracex_flutter.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -98,7 +97,7 @@ If your app uses `dio` for HTTP networking, attach `TraceXDioInterceptor` to tra
 
 ```dart
 import 'package:dio/dio.dart';
-import 'package:tracex/tracex.dart';
+import 'package:tracex_flutter/tracex_flutter.dart';
 
 final dio = Dio();
 dio.interceptors.add(TraceXDioInterceptor());

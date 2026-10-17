@@ -1,7 +1,7 @@
 import 'package:hive/hive.dart';
-import 'package:tracex/domain/entities/breadcrumb.dart';
-import 'package:tracex/domain/entities/crash.dart';
-import 'package:tracex/domain/entities/environment.dart';
+import 'package:tracex_flutter/domain/entities/breadcrumb.dart';
+import 'package:tracex_flutter/domain/entities/crash.dart';
+import 'package:tracex_flutter/domain/entities/environment.dart';
 
 part 'crash_hive_model.g.dart';
 

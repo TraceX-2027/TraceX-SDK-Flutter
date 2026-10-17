@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
-import 'package:tracex/data/collectors/environment_collector.dart';
-import 'package:tracex/domain/entities/environment.dart';
-import 'package:tracex/domain/repositories/base_environment_repository.dart';
+import 'package:tracex_flutter/data/collectors/environment_collector.dart';
+import 'package:tracex_flutter/domain/entities/environment.dart';
+import 'package:tracex_flutter/domain/repositories/base_environment_repository.dart';
 
 class EnvironmentRepository extends BaseEnvironmentRepository {
   final EnvironmentCollector environmentCollector;

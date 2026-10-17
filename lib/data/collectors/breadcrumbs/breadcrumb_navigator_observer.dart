@@ -1,5 +1,5 @@
 import 'package:flutter/widgets.dart';
-import 'package:tracex/data/collectors/breadcrumb_collector.dart';
+import 'package:tracex_flutter/data/collectors/breadcrumb_collector.dart';
 
 class TraceXNavigatorObserver extends NavigatorObserver {
   @override

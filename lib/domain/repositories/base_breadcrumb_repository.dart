@@ -1,4 +1,4 @@
-import 'package:tracex/domain/entities/breadcrumb.dart';
+import 'package:tracex_flutter/domain/entities/breadcrumb.dart';
 
 abstract class BaseBreadcrumbRepository {
   Future<List<Breadcrumb>> getBreadcrumbDetails();

@@ -1,5 +1,5 @@
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:tracex/data/models/crash_hive_model.dart';
+import 'package:tracex_flutter/data/models/crash_hive_model.dart';
 
 abstract class BaseCrashOfflineDatasource {
   Future<void> saveCrash(CrashHiveModel crash);

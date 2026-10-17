@@ -1,5 +1,5 @@
 import 'package:flutter/widgets.dart';
-import 'package:tracex/data/collectors/breadcrumb_collector.dart';
+import 'package:tracex_flutter/data/collectors/breadcrumb_collector.dart';
 
 /// Wraps [child] to capture confirmed tap gestures as breadcrumbs.
 ///

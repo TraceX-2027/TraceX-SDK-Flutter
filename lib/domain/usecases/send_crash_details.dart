@@ -1,5 +1,5 @@
-import 'package:tracex/domain/entities/crash.dart';
-import 'package:tracex/domain/repositories/base_crash_repository.dart';
+import 'package:tracex_flutter/domain/entities/crash.dart';
+import 'package:tracex_flutter/domain/repositories/base_crash_repository.dart';
 
 class SendCrashDetails {
   final BaseCrashRepository baseCrashRepository;

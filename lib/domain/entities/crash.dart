@@ -1,5 +1,5 @@
-import 'package:tracex/domain/entities/breadcrumb.dart';
-import 'package:tracex/domain/entities/environment.dart';
+import 'package:tracex_flutter/domain/entities/breadcrumb.dart';
+import 'package:tracex_flutter/domain/entities/environment.dart';
 
 class Crash {
   final dynamic id;

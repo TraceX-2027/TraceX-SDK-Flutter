@@ -1,4 +1,4 @@
-import 'package:tracex/domain/entities/environment.dart';
+import 'package:tracex_flutter/domain/entities/environment.dart';
 
 abstract class BaseEnvironmentRepository {
   Future<void> initialize();

@@ -1,7 +1,7 @@
-import 'package:tracex/data/datasources/crash_offline_datasource.dart';
-import 'package:tracex/data/models/crash_hive_model.dart';
-import 'package:tracex/domain/entities/crash.dart';
-import 'package:tracex/domain/repositories/base_crash_offline_repository.dart';
+import 'package:tracex_flutter/data/datasources/crash_offline_datasource.dart';
+import 'package:tracex_flutter/data/models/crash_hive_model.dart';
+import 'package:tracex_flutter/domain/entities/crash.dart';
+import 'package:tracex_flutter/domain/repositories/base_crash_offline_repository.dart';
 
 class CrashOfflineRepository extends BaseCrashOfflineRepository {
   final BaseCrashOfflineDatasource datasource;

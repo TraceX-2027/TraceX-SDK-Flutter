@@ -1,7 +1,7 @@
-import 'package:tracex/data/datasources/crash_remote_datasource.dart';
-import 'package:tracex/data/models/crashes_model.dart';
-import 'package:tracex/domain/entities/crash.dart';
-import 'package:tracex/domain/repositories/base_crash_repository.dart';
+import 'package:tracex_flutter/data/datasources/crash_remote_datasource.dart';
+import 'package:tracex_flutter/data/models/crashes_model.dart';
+import 'package:tracex_flutter/domain/entities/crash.dart';
+import 'package:tracex_flutter/domain/repositories/base_crash_repository.dart';
 
 class CrashRepository extends BaseCrashRepository {
   final BaseCrashRemoteDatasource baseCrashRemoteDatasources;

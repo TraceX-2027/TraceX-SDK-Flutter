@@ -1,6 +1,6 @@
-import 'package:tracex/data/models/breadcrumb_model.dart';
-import 'package:tracex/data/models/environment_model.dart';
-import 'package:tracex/domain/entities/crash.dart';
+import 'package:tracex_flutter/data/models/breadcrumb_model.dart';
+import 'package:tracex_flutter/data/models/environment_model.dart';
+import 'package:tracex_flutter/domain/entities/crash.dart';
 
 class CrashesModel extends Crash {
   CrashesModel({

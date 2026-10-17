@@ -1,7 +1,9 @@
-name: tracex
-description: "A new Flutter package project."
-version: 0.0.1
-homepage:
+name: tracex_flutter
+description: Official Flutter SDK for TraceX — real-time crash capture, forensic telemetry, and incident triage.
+version: 1.0.0
+homepage: https://tracex.dev
+repository: https://github.com/TraceX-2027/TraceX-SDK-Flutter
+issue_tracker: https://github.com/TraceX-2027/TraceX-SDK-Flutter/issues
 
 environment:
   sdk: ^3.9.2

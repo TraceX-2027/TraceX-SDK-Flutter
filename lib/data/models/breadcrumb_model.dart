@@ -1,4 +1,4 @@
-import 'package:tracex/domain/entities/breadcrumb.dart';
+import 'package:tracex_flutter/domain/entities/breadcrumb.dart';
 
 class BreadcrumbModel extends Breadcrumb {
   BreadcrumbModel({

@@ -4,8 +4,8 @@ import 'dart:math';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:tracex/domain/entities/crash.dart';
-import 'package:tracex/domain/usecases/save_offline_crash.dart';
+import 'package:tracex_flutter/domain/entities/crash.dart';
+import 'package:tracex_flutter/domain/usecases/save_offline_crash.dart';
 
 class CrashQueue {
   final CrashOffline crashOffline;

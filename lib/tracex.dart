@@ -2,20 +2,20 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
-import 'package:tracex/core/network/connectivity_monitor.dart';
-import 'package:tracex/core/services/crash_queue.dart';
-import 'package:tracex/core/services/crash_rate_limiter.dart';
-import 'package:tracex/core/services/services_locator.dart';
-import 'package:tracex/data/collectors/breadcrumb_collector.dart';
-import 'package:tracex/core/utils/api_const.dart';
-import 'package:tracex/domain/entities/breadcrumb.dart';
-import 'package:tracex/domain/entities/crash.dart';
-import 'package:tracex/domain/usecases/get_breadcrumb_details.dart';
-import 'package:tracex/domain/usecases/get_environment_details.dart';
-import 'package:tracex/domain/usecases/save_offline_crash.dart';
-import 'package:tracex/domain/usecases/send_batch_crash_details.dart';
-import 'package:tracex/domain/usecases/send_crash_details.dart';
-import 'package:tracex/src/data_scrubber.dart';
+import 'package:tracex_flutter/core/network/connectivity_monitor.dart';
+import 'package:tracex_flutter/core/services/crash_queue.dart';
+import 'package:tracex_flutter/core/services/crash_rate_limiter.dart';
+import 'package:tracex_flutter/core/services/services_locator.dart';
+import 'package:tracex_flutter/data/collectors/breadcrumb_collector.dart';
+import 'package:tracex_flutter/core/utils/api_const.dart';
+import 'package:tracex_flutter/domain/entities/breadcrumb.dart';
+import 'package:tracex_flutter/domain/entities/crash.dart';
+import 'package:tracex_flutter/domain/usecases/get_breadcrumb_details.dart';
+import 'package:tracex_flutter/domain/usecases/get_environment_details.dart';
+import 'package:tracex_flutter/domain/usecases/save_offline_crash.dart';
+import 'package:tracex_flutter/domain/usecases/send_batch_crash_details.dart';
+import 'package:tracex_flutter/domain/usecases/send_crash_details.dart';
+import 'package:tracex_flutter/src/data_scrubber.dart';
 // Public API exports - breadcrumb collectors and entities (B1 Fix)
 export 'data/collectors/breadcrumb_collector.dart';
 export 'data/collectors/breadcrumbs/breadcrumb_navigator_observer.dart';
@@ -23,9 +23,6 @@ export 'data/collectors/breadcrumbs/tracex_dio_interceptor.dart';
 export 'data/collectors/breadcrumbs/tracex_user_interaction.dart';
 export 'domain/entities/breadcrumb.dart';
 export 'src/data_scrubber.dart';
-
-export 'package:tracex/data/collectors/breadcrumbs/breadcrumb_navigator_observer.dart';
-export 'package:tracex/data/collectors/breadcrumbs/tracex_dio_interceptor.dart';
 
 class TraceX {
   TraceX._();
