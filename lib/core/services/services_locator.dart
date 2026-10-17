@@ -17,6 +17,7 @@ import 'package:tracex/domain/repositories/base_environment_repository.dart';
 import 'package:tracex/domain/usecases/get_breadcrumb_details.dart';
 import 'package:tracex/domain/usecases/get_environment_details.dart';
 import 'package:tracex/domain/usecases/save_offline_crash.dart';
+import 'package:tracex/domain/usecases/send_batch_crash_details.dart';
 import 'package:tracex/domain/usecases/send_crash_details.dart';
 
 final sl = GetIt.asNewInstance();
@@ -62,7 +63,6 @@ class ServicesLocator {
       }
       _dio.options.baseUrl = targetUrl;
 
-      // Enable origin fallback if target is the default edge worker endpoint
       final isEdgeTarget =
           endpoint == null ||
           targetUrl == ApiConst.edgeBaseUrl ||
@@ -98,6 +98,9 @@ class ServicesLocator {
 
     sl.registerLazySingleton<SendCrashDetails>(
       () => SendCrashDetails(baseCrashRepository: sl()),
+    );
+    sl.registerLazySingleton<SendBatchCrashDetails>(
+      () => SendBatchCrashDetails(baseCrashRepository: sl()),
     );
   }
 

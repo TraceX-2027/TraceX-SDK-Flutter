@@ -8,6 +8,7 @@ import 'package:tracex/data/models/crashes_model.dart';
 
 abstract class BaseCrashRemoteDatasource {
   Future<void> sendCrashDetails(CrashesModel crash);
+  Future<void> sendBatchCrashDetails(List<CrashesModel> crashes);
 }
 
 class CrashRemoteDatasource extends BaseCrashRemoteDatasource {
@@ -93,6 +94,104 @@ class CrashRemoteDatasource extends BaseCrashRemoteDatasource {
         );
         await dio.post(
           fallbackUrl!,
+          options: Options(
+            headers: headers,
+            connectTimeout: const Duration(seconds: 5),
+            sendTimeout: const Duration(seconds: 5),
+            receiveTimeout: const Duration(seconds: 5),
+          ),
+          data: payloadData,
+        );
+        return;
+      }
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> sendBatchCrashDetails(List<CrashesModel> crashes) async {
+    if (crashes.isEmpty) return;
+
+    final Map<String, dynamic> preparedPayload;
+
+    final payloadMap = {
+      'project_key': crashes.first.projectKey,
+      'events': crashes.map((c) => c.toJson()).toList(),
+    };
+
+    if (kIsWeb) {
+      final jsonStr = jsonEncode(payloadMap);
+      preparedPayload = {'data': jsonStr, 'isGzip': false};
+    } else {
+      preparedPayload = await Isolate.run(() {
+        final jsonStr = jsonEncode(payloadMap);
+        final bytes = utf8.encode(jsonStr);
+
+        if (bytes.length > 5 * 1024) {
+          return {
+            'data': Uint8List.fromList(gzip.encode(bytes)),
+            'isGzip': true,
+          };
+        }
+        return {'data': jsonStr, 'isGzip': false};
+      });
+    }
+    final isGzip = preparedPayload['isGzip'] as bool;
+    final payloadData = preparedPayload['data'];
+
+    final headers = {
+      'X-TraceX-Key': crashes.first.projectKey,
+      'Content-Type': 'application/json',
+      if (isGzip) 'Content-Encoding': 'gzip',
+      'User-Agent': 'TraceX-Flutter-SDK/1.0.0',
+    };
+
+    final batchFallbackUrl = fallbackUrl != null
+        ? (fallbackUrl!.endsWith('/')
+              ? '${fallbackUrl}batch'
+              : '$fallbackUrl/batch')
+        : null;
+
+    if (_preferFallback && batchFallbackUrl != null) {
+      await dio.post(
+        batchFallbackUrl,
+        options: Options(
+          headers: headers,
+          connectTimeout: const Duration(seconds: 5),
+          sendTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 5),
+        ),
+        data: payloadData,
+      );
+      return;
+    }
+
+    try {
+      final response = await dio.post(
+        'crashes/batch',
+        options: Options(
+          headers: headers,
+          validateStatus: (status) =>
+              status != null && (status == 200 || status == 202),
+        ),
+        data: payloadData,
+      );
+
+      if (response.statusCode != 200 && response.statusCode != 202) {
+        throw DioException(
+          requestOptions: response.requestOptions,
+          response: response,
+          message: 'Failed to dispatch batch crashes',
+        );
+      }
+    } catch (e) {
+      if (batchFallbackUrl != null && _isEligibleForFallback(e)) {
+        _preferFallback = true;
+        debugPrint(
+          '[TraceX] Batch primary dispatch failed ($e). Falling back to origin: $batchFallbackUrl',
+        );
+        await dio.post(
+          batchFallbackUrl,
           options: Options(
             headers: headers,
             connectTimeout: const Duration(seconds: 5),

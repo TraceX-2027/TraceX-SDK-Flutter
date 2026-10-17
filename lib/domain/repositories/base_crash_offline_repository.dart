@@ -6,6 +6,5 @@ abstract class BaseCrashOfflineRepository {
   List<Crash> getCachedCrashes();
 
   Future<void> deleteCrash(Crash crash);
-
-  Future<void> clear();
+  Future<void> deleteCrashesOffline(List<Crash> crashes);
 }

@@ -31,7 +31,11 @@ class CrashOfflineRepository extends BaseCrashOfflineRepository {
   }
 
   @override
-  Future<void> clear() async {
-    await datasource.clear();
+  Future<void> deleteCrashesOffline(List<Crash> crashes) async {
+    for (final crash in crashes) {
+      if (crash.id != null) {
+        await datasource.deleteCrash(crash.id);
+      }
+    }
   }
 }

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
+import 'package:tracex/core/network/connectivity_monitor.dart';
 import 'package:tracex/core/services/crash_queue.dart';
 import 'package:tracex/core/services/crash_rate_limiter.dart';
 import 'package:tracex/core/services/services_locator.dart';
@@ -12,6 +13,7 @@ import 'package:tracex/domain/entities/crash.dart';
 import 'package:tracex/domain/usecases/get_breadcrumb_details.dart';
 import 'package:tracex/domain/usecases/get_environment_details.dart';
 import 'package:tracex/domain/usecases/save_offline_crash.dart';
+import 'package:tracex/domain/usecases/send_batch_crash_details.dart';
 import 'package:tracex/domain/usecases/send_crash_details.dart';
 import 'package:tracex/src/data_scrubber.dart';
 // Public API exports - breadcrumb collectors and entities (B1 Fix)
@@ -37,34 +39,15 @@ class TraceX {
   static String? _projectKey;
   static bool _enableLogging = false;
 
-  /// Alias for [initialize] to adhere to standard Flutter SDK naming conventions
-  static Future<void> init({
-    String? projectKey,
-    String? apiKey,
-    String? endpoint,
-    String? fallbackEndpoint,
-    bool enableLogging = false,
-    bool offlineBuffer = true,
-    bool captureBreadcrumbs = true,
-  }) => initialize(
-    projectKey: projectKey,
-    apiKey: apiKey,
-    endpoint: endpoint,
-    fallbackEndpoint: fallbackEndpoint,
-    enableLogging: enableLogging,
-    offlineBuffer: offlineBuffer,
-    captureBreadcrumbs: captureBreadcrumbs,
-  );
-
   static SendCrashDetails? _sendCrashDetails;
   static GetEnvironmentDetails? _getEnvironmentDetails;
   static GetBreadcrumbDetails? _getBreadcrumbDetails;
   static CrashOffline? _crashOffline;
+  static ConnectivityMonitor? _connectivityMonitor;
 
   static CrashRateLimiter? _rateLimiter;
   static CrashQueue? _crashQueue;
 
-  // سجل بصمات الكراشات لمنع التكرار بدقة عالية
   static final Map<int, DateTime> _crashHistory = {};
 
   static bool _initialized = false;
@@ -102,8 +85,8 @@ class TraceX {
   // Initialize
   // -----------------------------------------
 
-  static Future<void> initialize({
-    String? projectKey,
+  static Future<void> init({
+    required String projectKey,
     String? apiKey,
     String? endpoint,
     String? fallbackEndpoint,
@@ -115,7 +98,7 @@ class TraceX {
       return;
     }
 
-    final effectiveKey = (projectKey != null && projectKey.trim().isNotEmpty)
+    final effectiveKey = (projectKey.trim().isNotEmpty)
         ? projectKey.trim()
         : (apiKey != null && apiKey.trim().isNotEmpty)
         ? apiKey.trim()
@@ -176,9 +159,13 @@ class TraceX {
       // Start Offline Retry
       // -----------------------------------------
 
-      if (_offlineBuffer) {
-        _crashQueue!.startOfflineRetry(_sendCrashDetails!.execute);
-      }
+      _connectivityMonitor = ConnectivityMonitor();
+      _connectivityMonitor!.startListening(
+        onReconnected: () {
+          final sendBatch = sl<SendBatchCrashDetails>();
+          _crashQueue?.flushOfflineInBatches(sendBatch.execute);
+        },
+      );
 
       // -----------------------------------------
       // Initialize Environment
@@ -234,7 +221,8 @@ class TraceX {
       _getEnvironmentDetails = null;
       _getBreadcrumbDetails = null;
       _crashOffline = null;
-
+      _connectivityMonitor?.stopListening();
+      _connectivityMonitor = null;
       // Restore previous handlers
       FlutterError.onError = _previousFlutterErrorHandler;
       PlatformDispatcher.instance.onError = _previousPlatformErrorHandler;
@@ -286,6 +274,10 @@ class TraceX {
     _projectKey = null;
     _enableLogging = false;
     _crashHistory.clear();
+
+    _connectivityMonitor?.stopListening();
+    _connectivityMonitor = null;
+
     _crashQueue?.dispose();
     _crashQueue = null;
     _rateLimiter = null;
@@ -334,7 +326,7 @@ class TraceX {
 
     try {
       // -----------------------------------------
-      // 1. Deduplication (خوارزمية منع التكرار بالبصمة)
+      // 1. Deduplication
       // -----------------------------------------
 
       if (_isDuplicate(
@@ -344,6 +336,8 @@ class TraceX {
         timestamp: occurredAt,
       )) {
         _log('TraceX: Duplicate crash ignored.');
+        _log("TraceX: Is Duplicate");
+
         return;
       }
 
