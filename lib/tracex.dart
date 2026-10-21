@@ -20,7 +20,7 @@ import 'package:tracex_flutter/src/data_scrubber.dart';
 export 'data/collectors/breadcrumb_collector.dart';
 export 'data/collectors/breadcrumbs/breadcrumb_navigator_observer.dart';
 export 'data/collectors/breadcrumbs/tracex_dio_interceptor.dart';
-export 'data/collectors/breadcrumbs/tracex_user_interaction.dart';
+export 'data/collectors/breadcrumbs/tracex_user_interaction_widget.dart';
 export 'domain/entities/breadcrumb.dart';
 export 'src/data_scrubber.dart';
 
