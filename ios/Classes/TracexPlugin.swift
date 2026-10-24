@@ -45,11 +45,12 @@ public class TracexPlugin: NSObject, FlutterPlugin {
         // Device Model via utsname
         var systemInfo = utsname()
         uname(&systemInfo)
-        let deviceModel = withUnsafePointer(to: &systemInfo.machine) {
-            $0.withMemoryRebound(to: CChar.self, capacity: 1) { ptr in
-                String(validatingUTF8: ptr) ?? "Unknown"
-            }
-        }
+       let deviceModel = withUnsafeBytes(of: &systemInfo.machine) { raw in
+       guard let base = raw.baseAddress?.assumingMemoryBound(to: CChar.self) else {
+       return "Unknown"
+       }
+    return String(cString: base)
+}
         let osVersion = UIDevice.current.systemVersion
 
         #if targetEnvironment(simulator)

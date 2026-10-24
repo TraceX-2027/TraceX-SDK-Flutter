@@ -97,19 +97,17 @@ class TraceXNavigatorObserver extends NavigatorObserver {
 
     try {
       void visitor(Element element) {
+        if (foundName != 'Unknown') return;
         final widgetType = element.widget.runtimeType.toString();
-
         final isInternal = ignoredInternalPrefixes.any(
-          (prefix) => widgetType.startsWith(prefix) || widgetType == prefix,
+          (p) => widgetType.startsWith(p),
         );
-
         if (!isInternal &&
             (element.widget is StatelessWidget ||
                 element.widget is StatefulWidget)) {
           foundName = widgetType;
           return;
         }
-
         element.visitChildren(visitor);
       }
 

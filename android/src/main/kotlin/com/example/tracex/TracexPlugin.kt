@@ -46,9 +46,9 @@ class TracexPlugin : FlutterPlugin, MethodCallHandler {
             val isLowMemory = memoryInfo.lowMemory
 
             // 2. Battery Info
-            val batteryManager = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
-            val batteryLevel = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
-
+           val batteryManager = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+val rawBattery = batteryManager?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
+val batteryLevel = if (rawBattery in 0..100) rawBattery else -1 
             // 3. Package Info
             var appVersion = "Unknown"
             try {
