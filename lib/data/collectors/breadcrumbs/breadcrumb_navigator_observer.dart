@@ -35,17 +35,85 @@ class TraceXNavigatorObserver extends NavigatorObserver {
 
   void _logRoute(String action, Route route) {
     try {
-      final routeName = route.settings.name ?? route.runtimeType.toString();
+      final explicitName = route.settings.name;
       final arguments = route.settings.arguments;
 
-      BreadcrumbCollector.addBreadcrumb(
-        category: 'navigation',
-        action: action,
-        target: routeName,
-        data: {if (arguments != null) 'arguments': arguments.toString()},
-      );
+      if (explicitName != null &&
+          explicitName.isNotEmpty &&
+          explicitName != '/') {
+        BreadcrumbCollector.addBreadcrumb(
+          category: 'navigation',
+          action: action,
+          target: explicitName,
+          data: {if (arguments != null) 'arguments': arguments.toString()},
+        );
+        return;
+      }
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        String routeName = 'Unknown';
+
+        if (route is ModalRoute) {
+          final context = route.subtreeContext;
+          if (context != null && context.mounted) {
+            routeName = _resolveActualScreenName(context);
+          }
+        }
+
+        if (routeName == 'Unknown') {
+          routeName = route.runtimeType.toString();
+        }
+
+        BreadcrumbCollector.addBreadcrumb(
+          category: 'navigation',
+          action: action,
+          target: routeName,
+          data: {if (arguments != null) 'arguments': arguments.toString()},
+        );
+      });
     } catch (_) {
       // Telemetry collection must never disrupt application flow
     }
+  }
+
+  String _resolveActualScreenName(BuildContext context) {
+    String foundName = 'Unknown';
+
+    final ignoredInternalPrefixes = [
+      '_',
+      'ModalScope',
+      'Builder',
+      'Semantics',
+      'Theme',
+      'MediaQuery',
+      'Padding',
+      'AnimatedBuilder',
+      'RawGestureDetector',
+      'Focus',
+      'Actions',
+      'PrimaryScrollController',
+      'AnnotatedRegion',
+    ];
+
+    try {
+      void visitor(Element element) {
+        if (foundName != 'Unknown') return;
+        final widgetType = element.widget.runtimeType.toString();
+        final isInternal = ignoredInternalPrefixes.any(
+          (p) => widgetType.startsWith(p),
+        );
+        if (!isInternal &&
+            (element.widget is StatelessWidget ||
+                element.widget is StatefulWidget)) {
+          foundName = widgetType;
+          return;
+        }
+        element.visitChildren(visitor);
+      }
+
+      context.visitChildElements(visitor);
+    } catch (_) {}
+
+    return foundName;
   }
 }

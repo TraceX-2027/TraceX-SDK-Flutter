@@ -1,6 +1,6 @@
 name: tracex_flutter
 description: Official Flutter SDK for TraceX — real-time crash capture, forensic telemetry, and incident triage.
-version: 1.0.1
+version: 1.0.2
 homepage: https://tracex.dev
 repository: https://github.com/TraceX-2027/TraceX-SDK-Flutter
 issue_tracker: https://github.com/TraceX-2027/TraceX-SDK-Flutter/issues
@@ -10,16 +10,13 @@ environment:
   flutter: ">=1.17.0"
 
 dependencies:
-  battery_plus: ">=7.1.1 <8.0.0"
   connectivity_plus: ">=7.3.1 <8.0.0"
-  device_info_plus: ">=12.4.0 <14.0.0"
   dio: ">=5.11.0 <6.0.0"
   flutter:
     sdk: flutter
   get_it: ">=9.2.1 <10.0.0"
   hive: ^2.2.3
   hive_flutter: ^1.1.0
-  package_info_plus: ">=9.0.1 <11.0.0"
 
 dev_dependencies:
   flutter_test:

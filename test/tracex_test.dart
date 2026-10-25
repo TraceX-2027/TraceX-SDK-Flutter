@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tracex_flutter/core/network/connectivity_monitor.dart';
 import 'package:tracex_flutter/core/services/crash_queue.dart';
@@ -318,7 +318,18 @@ void main() {
       expect(TraceX.recordFlutterError, isNotNull);
       expect(TraceX.recordError, isNotNull);
       expect(TraceX.runGuarded, isNotNull);
+      expect(TraceX.wrapApp, isNotNull);
+      expect(TraceX.wrap, isNotNull);
       TraceX.recordError(Exception('test exception'), StackTrace.current);
+    });
+
+    test('TraceX.wrapApp injects TraceXNavigatorObserver and interaction wrapper', () {
+      final app = MaterialApp(
+        home: const Scaffold(body: Text('Hello TraceX')),
+      );
+      final wrappedApp = TraceX.wrapApp(app);
+      expect(wrappedApp.navigatorObservers?.any((o) => o is TraceXNavigatorObserver), isTrue);
+      expect(wrappedApp.builder, isNotNull);
     });
   });
 
@@ -651,6 +662,105 @@ void main() {
         expect(last.data['password'], equals('[REDACTED]'));
         expect(last.data['authToken'], equals('[REDACTED]'));
         expect(last.data['normalKey'], equals('normalValue'));
+      },
+    );
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // M2: Automated UI Interaction & Anonymous Route Resolution Tests
+  // ─────────────────────────────────────────────────────────────────────────
+  group('M2: Automated UI Interaction & Anonymous Route Tests', () {
+    setUp(() {
+      BreadcrumbCollector.clear();
+    });
+
+    testWidgets(
+      'TraceXUserInteractionWidget records confirmed tap breadcrumbs',
+      (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: TraceXUserInteractionWidget(
+              child: Scaffold(
+                body: Center(
+                  child: ElevatedButton(
+                    onPressed: () {},
+                    child: const Text('Save'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        // محاكاة ضغطة زرار مؤكدة
+        await tester.tap(find.text('Save'));
+        await tester.pump();
+
+        final taps = BreadcrumbCollector().breadcrumbs
+            .where((b) => b.category == 'ui.tap')
+            .toList();
+
+        expect(taps.length, equals(1));
+        expect(taps.first.target, contains('Save'));
+      },
+    );
+
+    testWidgets(
+      'TraceXUserInteractionWidget ignores scroll and drag gestures beyond touch slop',
+      (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: TraceXUserInteractionWidget(
+              child: Scaffold(
+                body: ListView.builder(
+                  itemCount: 20,
+                  itemBuilder: (_, index) =>
+                      ListTile(title: Text('Item $index')),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        // محاكاة حركة سكرول بالسحب لأسفل مسافة 150 بكسل
+        await tester.drag(find.text('Item 0'), const Offset(0, -150));
+        await tester.pump();
+
+        // يجب ألا يتم تسجيل أي ضغطة زرار لأن الحركة سكرول وليست tap
+        final taps = BreadcrumbCollector().breadcrumbs
+            .where((b) => b.category == 'ui.tap')
+            .toList();
+
+        expect(taps, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'Deprecated TraceXTapListener captures taps for backward compatibility',
+      (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Center(
+                // ignore: deprecated_member_use_from_same_package
+                child: TraceXTapListener(
+                  label: 'LegacySubmitBtn',
+                  child: const Text('Submit'),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        await tester.tap(find.text('Submit'));
+        await tester.pump();
+
+        final taps = BreadcrumbCollector().breadcrumbs
+            .where((b) => b.category == 'ui.tap')
+            .toList();
+
+        expect(taps.length, equals(1));
+        expect(taps.first.target, equals('LegacySubmitBtn'));
       },
     );
   });

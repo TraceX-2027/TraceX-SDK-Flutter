@@ -1,13 +1,15 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:tracex_flutter/core/network/connectivity_monitor.dart';
 import 'package:tracex_flutter/core/services/crash_queue.dart';
 import 'package:tracex_flutter/core/services/crash_rate_limiter.dart';
 import 'package:tracex_flutter/core/services/services_locator.dart';
 import 'package:tracex_flutter/data/collectors/breadcrumb_collector.dart';
 import 'package:tracex_flutter/core/utils/api_const.dart';
+import 'package:tracex_flutter/data/collectors/breadcrumbs/breadcrumb_navigator_observer.dart';
+import 'package:tracex_flutter/data/collectors/breadcrumbs/tracex_user_interaction_widget.dart';
 import 'package:tracex_flutter/domain/entities/breadcrumb.dart';
 import 'package:tracex_flutter/domain/entities/crash.dart';
 import 'package:tracex_flutter/domain/usecases/get_breadcrumb_details.dart';
@@ -20,7 +22,7 @@ import 'package:tracex_flutter/src/data_scrubber.dart';
 export 'data/collectors/breadcrumb_collector.dart';
 export 'data/collectors/breadcrumbs/breadcrumb_navigator_observer.dart';
 export 'data/collectors/breadcrumbs/tracex_dio_interceptor.dart';
-export 'data/collectors/breadcrumbs/tracex_user_interaction.dart';
+export 'data/collectors/breadcrumbs/tracex_user_interaction_widget.dart';
 export 'domain/entities/breadcrumb.dart';
 export 'src/data_scrubber.dart';
 
@@ -90,8 +92,9 @@ class TraceX {
   // Initialize
   // -----------------------------------------
 
-  static Future<void> init({
+  static Future<MaterialApp?> init({
     required String projectKey,
+    MaterialApp? app,
     String? apiKey,
     String? endpoint,
     String? fallbackEndpoint,
@@ -100,7 +103,7 @@ class TraceX {
     bool captureBreadcrumbs = true,
   }) async {
     if (_initialized || _initializing) {
-      return;
+      return app != null ? _wrapMaterialApp(app) : null;
     }
 
     final effectiveKey = (projectKey.trim().isNotEmpty)
@@ -206,6 +209,8 @@ class TraceX {
       _initialized = true;
 
       _log('TraceX: Initialized successfully with endpoint: $targetEndpoint');
+
+      return app != null ? _wrapMaterialApp(app) : null;
     } catch (e, stack) {
       debugPrint('TraceX: Initialization failed: $e');
       debugPrint('$stack');
@@ -228,6 +233,7 @@ class TraceX {
       _crashOffline = null;
       _connectivityMonitor?.stopListening();
       _connectivityMonitor = null;
+
       // Restore previous handlers
       FlutterError.onError = _previousFlutterErrorHandler;
       PlatformDispatcher.instance.onError = _previousPlatformErrorHandler;
@@ -236,6 +242,52 @@ class TraceX {
     } finally {
       _initializing = false;
     }
+  }
+
+  /// Wraps a [MaterialApp] with the TraceX navigator observer and interaction widget.
+  static MaterialApp wrapApp(MaterialApp app) => _wrapMaterialApp(app);
+
+  /// Wraps any [Widget] tree with user interaction tap telemetry.
+  static Widget wrap(Widget child) => TraceXUserInteractionWidget(child: child);
+
+  static MaterialApp _wrapMaterialApp(MaterialApp app) {
+    final observers = List<NavigatorObserver>.from(
+      app.navigatorObservers ?? const [],
+    );
+    if (!observers.any((o) => o is TraceXNavigatorObserver)) {
+      observers.add(TraceXNavigatorObserver());
+    }
+
+    return MaterialApp(
+      key: app.key,
+      scaffoldMessengerKey: app.scaffoldMessengerKey,
+      home: app.home,
+      routes: app.routes ?? const <String, WidgetBuilder>{},
+      initialRoute: app.initialRoute,
+      onGenerateRoute: app.onGenerateRoute,
+      onGenerateInitialRoutes: app.onGenerateInitialRoutes,
+      onUnknownRoute: app.onUnknownRoute,
+      navigatorKey: app.navigatorKey,
+      navigatorObservers: observers,
+      builder: (context, child) {
+        final originalWidget = app.builder != null
+            ? app.builder!(context, child)
+            : (child ?? const SizedBox.shrink());
+
+        return TraceXUserInteractionWidget(child: originalWidget);
+      },
+      title: app.title,
+      color: app.color,
+      theme: app.theme,
+      darkTheme: app.darkTheme,
+      themeMode: app.themeMode,
+      locale: app.locale,
+      localizationsDelegates: app.localizationsDelegates,
+      localeListResolutionCallback: app.localeListResolutionCallback,
+      localeResolutionCallback: app.localeResolutionCallback,
+      supportedLocales: app.supportedLocales,
+      debugShowCheckedModeBanner: app.debugShowCheckedModeBanner,
+    );
   }
 
   /// Records a Flutter framework error directly.
