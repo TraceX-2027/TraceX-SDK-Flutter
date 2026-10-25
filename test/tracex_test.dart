@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tracex_flutter/core/network/connectivity_monitor.dart';
 import 'package:tracex_flutter/core/services/crash_queue.dart';
@@ -319,7 +318,18 @@ void main() {
       expect(TraceX.recordFlutterError, isNotNull);
       expect(TraceX.recordError, isNotNull);
       expect(TraceX.runGuarded, isNotNull);
+      expect(TraceX.wrapApp, isNotNull);
+      expect(TraceX.wrap, isNotNull);
       TraceX.recordError(Exception('test exception'), StackTrace.current);
+    });
+
+    test('TraceX.wrapApp injects TraceXNavigatorObserver and interaction wrapper', () {
+      final app = MaterialApp(
+        home: const Scaffold(body: Text('Hello TraceX')),
+      );
+      final wrappedApp = TraceX.wrapApp(app);
+      expect(wrappedApp.navigatorObservers?.any((o) => o is TraceXNavigatorObserver), isTrue);
+      expect(wrappedApp.builder, isNotNull);
     });
   });
 

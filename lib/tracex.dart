@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/widgets.dart';
 import 'package:tracex_flutter/core/network/connectivity_monitor.dart';
 import 'package:tracex_flutter/core/services/crash_queue.dart';
 import 'package:tracex_flutter/core/services/crash_rate_limiter.dart';
@@ -93,9 +92,9 @@ class TraceX {
   // Initialize
   // -----------------------------------------
 
-  static Future<MaterialApp> init({
+  static Future<MaterialApp?> init({
     required String projectKey,
-    required MaterialApp app,
+    MaterialApp? app,
     String? apiKey,
     String? endpoint,
     String? fallbackEndpoint,
@@ -104,7 +103,7 @@ class TraceX {
     bool captureBreadcrumbs = true,
   }) async {
     if (_initialized || _initializing) {
-      return _wrapMaterialApp(app);
+      return app != null ? _wrapMaterialApp(app) : null;
     }
 
     final effectiveKey = (projectKey.trim().isNotEmpty)
@@ -211,7 +210,7 @@ class TraceX {
 
       _log('TraceX: Initialized successfully with endpoint: $targetEndpoint');
 
-      return _wrapMaterialApp(app);
+      return app != null ? _wrapMaterialApp(app) : null;
     } catch (e, stack) {
       debugPrint('TraceX: Initialization failed: $e');
       debugPrint('$stack');
@@ -245,6 +244,12 @@ class TraceX {
     }
   }
 
+  /// Wraps a [MaterialApp] with the TraceX navigator observer and interaction widget.
+  static MaterialApp wrapApp(MaterialApp app) => _wrapMaterialApp(app);
+
+  /// Wraps any [Widget] tree with user interaction tap telemetry.
+  static Widget wrap(Widget child) => TraceXUserInteractionWidget(child: child);
+
   static MaterialApp _wrapMaterialApp(MaterialApp app) {
     final observers = List<NavigatorObserver>.from(
       app.navigatorObservers ?? const [],
@@ -267,7 +272,7 @@ class TraceX {
       builder: (context, child) {
         final originalWidget = app.builder != null
             ? app.builder!(context, child)
-            : child!;
+            : (child ?? const SizedBox.shrink());
 
         return TraceXUserInteractionWidget(child: originalWidget);
       },
